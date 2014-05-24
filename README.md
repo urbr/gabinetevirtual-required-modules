@@ -1,0 +1,2 @@
+gabinetevirtual-required-modules
+================================
