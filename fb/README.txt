@@ -1,196 +1,71 @@
 Drupal for Facebook
 -------------------
 
-Project Home:
+More information:
 http://www.drupalforfacebook.org, http://drupal.org/project/fb
 
-Primary author and maintainer: Dave Cohen (http://www.dave-cohen.com/contact)
-Do  NOT contact  the  maintainer  with a question  that  can be  easily
-answered with a web search.  You may not receive a reply.
+Branch: 7.x-4.x (version 4.x for Drupal 7.x)
 
-Branch: 7.x-3.x (version 3.x for Drupal 7.x)
+This is an early release of modules/fb for developers.  Use extreme
+caution when using this version on your website.  It is in a volatile
+state of development.  Most users should wait until 4.0 release,
+although it is unclear how long that will take.
 
-This file is more current than online documentation.  When in doubt,
-trust this file.  Online documentation: http://drupal.org/node/195035,
-has more detail and you should read it next..
+To upgrade:
+-----------
 
-To upgrade from Drupal 6 to Drupal 7:
-- Upgrade your D6 version to 3.3 or later.  Run update.php and make sure everything seems to work.  Then upgrade drupal and all modules to D7 branch.
+This version (4.x) is not a drop in replacement for the previous
+version (3.x).  This is a rewrite, not backward compatible.  You may
+find many features of the previousl version are not supported here.
 
-
-To upgrade from on D7 version to the next:
-- Read the upgrade instructions: http://drupal.org/node/936958
 
 To install:
+-----------
 
-- Make sure you have a PHP client from facebook (version >= 3.1.1).
-  The 2.x.y versions are not supported by this version of Drupal for Facebook.
-  Download from https://github.com/facebook/facebook-php-sdk/downloads.
-  Extract the files, and place them in sites/all/libraries/facebook-php-sdk.
+Unlike previous versions of this module, you need not install
+Facebook's PHP SDK.  There is nothing extra to download.
 
-  If you have the Libraries API module installed, you may place the files in
-  another recognised location (such as sites/all/libraries), providing that the
-  directory is named 'facebook-php-sdk'.
+Simply enable the modules you need, as is normal when working with
+Drupal.
 
-  Or, to manually set the location of the php-sdk in any other
-  directory, edit your settings.php to include a line similar to the
-  one below. Add to the section where the $conf variable is defined,
-  or the very end of settings.php. And customize the path as needed.
-
-  $conf['fb_api_file'] = 'sites/all/libraries/facebook-php-sdk/src/facebook.php';
-
-  See also http://drupal.org/node/923804
-
-- Your theme needs the following attribute at the end of the <html> tag:
-
-  xmlns:fb="http://www.facebook.com/2008/fbml"
-
-  Drupal 7 should include this by default.  Use your browser's view source feature to confirm.
-  If not, you may need to edit your theme's html.tpl.php file.  See
-  http://www.drupalforfacebook.org/node/1106.  Note this applies to
-  themes used for Facebook Connect, iframe Canvas Pages, and Social
-  Plugins (i.e. like buttons).  Without this attribute, IE will fail.
-
-  Note that some documention on facebook.com suggests
-  xmlns:fb="http://ogp.me/ns/fb#" instead of the URL above.  Try that
-  if the above is not working for you.
+See admin >> configuration >> facebook, for a variety of settings and
+options.  More details here as the modules become more stable.
 
 
-- To support canvas pages and/or page tabs, url rewriting and other
-  settings must be initialized before modules are loaded, so you must
-  add this code to your settings.php.  This is done by adding these
-  two lines to the end of sites/default/settings.php (or
-  sites/YOUR_DOMAIN/settings.php).
+Canvas pages:
+-------------
 
-  include "sites/all/modules/fb/fb_url_rewrite.inc";
+Modern Canvas Pages (a.k.a. apps on Facebook, and this applies to page tabs, too) are iframes.  So in the simplest cases you can simply refer to your Drupal URL on the Facebook Application Settings form.  However, if you want fb_canvas.module to provide some helpful features (i.e. rewriting links so they point to canvas page URLs) enable fb_canvas.module and do the following.
+
+To best support Canvas Pages, modules/fb needs a change to your settings.php file.  At the end of that file, include fb_settings.inc.  The exact line you need to add depends on where you've placed modules/fb.  For most, this will work:
+
   include "sites/all/modules/fb/fb_settings.inc";
 
-  (Change include paths if modules/fb is not in sites/all.)
+On your Facebook Application Settings form (on developers.facebook.com), specify a Canvas URL like "http://mydomain.com/path/to/drupal/fb__canvas/APP_ID".  Note you must change every part of that URL except the "http://" and the "fb__canvas".  So, for example,  apps.facebook.com/drupalforfacebook uses "http://www.drupalforfacebook.org/fb__canvas/4998126732/".
 
-- For canvas pages, add something like this to your settings.php:
-
-  if (!headers_sent()) {
-    header('P3P: CP="We do not have a P3P policy."');
-  }
-
-  See http://drupal.org/node/933994 and search for "P3P" for details.
-
-- Go to Administer >> Site Building >> Modules and enable the Facebook
-  modules that you need.
-
-  Enable fb.module for Social Plugins.
-
-  Enable fb_devel.module and keep it enabled until you have everything
-  set up. You should disable this on your live server once you are
-  certain facebook features are working. (Note this requires
-  http://drupal.org/project/devel, which is well worth installing
-  anyway.)
-
-  Enable fb_app.module and fb_user.module if you plan to create
-  facebook applications.
-
-  Enable fb_connect.module for Facebook Connect and/or
-  fb_canvas.module for Canvas Page apps.
-
-  Create a new Text Format that does not restrict/clean HTML tags and use it
-  in blocks and nodes. Other Text Formats (formerly called Input Formats in D6)
-  like the built-in Full HTML Text Format actually mangle FB tags like <fb:like>.
-
-  Pages at http://drupal.org/node/932690 will help you decide which
-  other modules you need to enable for your particular needs.
-
-
-To support Facebook Connect, Canvas Pages, and/or Social Plugins that
-require an Application, read on...
-
-- You must enable clean URLs. If you don't, some links that drupal
-  creates will not work properly on canvas pages.
-
-- Create an application on Facebook, currently at
-  http://www.facebook.com/developers/createapp.php. Fill in the
-  minimum required to get an apikey and secret. If supporting canvas
-  pages, specify a canvas name, too.  You may ignore other settings
-  for now.
-
-- Go to Administer >> Site Building >> Facebook Applications and click
-  the Add Applicaiton tab.  Use the app id, apikey and secret that
-  Facebook has shown you.  Hopefully other settings will be
-  self-explanitory.  When you submit your changes, Drupal for Facebook
-  will automatically set the callback URL and some other properties
-  which help it work properly.
-
+Note there are _two_ underbars in fb__canvas.  Specify a Secure Canvas URL if your site supports HTTPS.
 
 Troubleshooting:
----------------
+----------------
 
-Reread this file and follow instructions carefully.
+Enable fb_devel.module.  It may provide warnings you would not
+otherwise see.
 
-Read http://drupal.org/node/933994, and all the module documentation
-on http://drupal.org/node/912614.
+Check admin >> reports >> status report.  You may see errors or
+warnings there.
 
-Enable the fb_devel.module and add the block it provides (called
-"Facebook Devel Page info") to the footer of your Facebook theme.
-fb_devel.module will catch some errors and write useful information to
-Drupal's log and status page.
+Also check admin >> reports >> recent log messages.
 
-Use your browser's view source feature, and search page source for any
-<script> tag which includes facebook's javascript,
-"http://connect.facebook.net/en_US/all.js".  fb.js will include this
-for you.  Including it too soon will break many features.  So remove
-it from any block, node, template or whatever that adds it to the
-page.  Similarly, do not include any <div id="fb-root">.
 
-Disable Global Redirect, if you have that module installed.  Users
-have reported problems with it and Drupal for Facebook.  Any module
-which implements custom url rewrites could interfere with canvas page
-and profile tab support.
+Bug reports and feature requests may be submitted.  Check the issue
+queue for similar issues before you submit, because often the answer
+is already there.
 
-On the facebook side, make sure your application is not in "sandbox
-mode".  This is known to have unwanted side effects.  Also, don't use
-a test account. If you've used a test account, ever, even for another
-application, clear all your browser's cookies.  Try to reproduce the
-problem not in sandbox mode, and not using a test account.
-
-Bug reports and feature requests may be submitted.
-Here's an idea: check the issue queue before you submit
 http://drupal.org/project/issues/fb
 
 If you do submit an issue, start the description with "I read the
 README.txt from start to finish," and you will get a faster, more
-thoughtful response. Seriously, prove that you read this far.
-
-Below are more options for your settings.php. Add the PHP shown below
-to the very end of your settings.php, and modify the paths accordingly
-(i.e. where this example has "sites/all/modules/fb", you might need
-"profiles/custom/modules/fb").
-
-
-
-
-//// Code to add to settings.php:
-/////////////////////////////////
-
-/**
- * Drupal for Facebook settings.
- */
-
-if (!is_array($conf))
-  $conf = array();
-
-$conf['fb_verbose'] = TRUE; // debug output
-//$conf['fb_verbose'] = 'extreme'; // for verbosity fetishists.
-
-// More efficient connect session discovery.
-// Required if supporting one connect app and different canvas apps.
-//$conf['fb_id'] = '123.....XYZ'; // Your connect app's ID goes here.
-
-// Enable URL rewriting (for canvas page apps).
-include "sites/all/modules/fb/fb_url_rewrite.inc";
-include "sites/all/modules/fb/fb_settings.inc";
-
-// Header so that IE will accept cookies on canvas pages.
-if (!headers_sent()) {
-  header('P3P: CP="We do not have a P3P policy."');
-}
-
-// end of settings.php
+thoughtful response.  Seriously, prove that you read this far.  And
+read the instructions when submitting the issue, the form asks for
+very specific information and if you provide that it will be easier to
+answer questions and provide support.

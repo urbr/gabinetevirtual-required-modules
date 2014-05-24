@@ -9,8 +9,8 @@
  */
 Drupal.behaviors.fb_canvas = {
   attach: function(context, settings) {
-    // Resize if body class includes fb_canvas-resizable.
-    jQuery('body.fb_canvas-resizable:not(.fb_canvas-processed)').each(function () {
+    // Make canvas pages resize automatically.  Only works when facebook javascript enabled.
+    jQuery('body:not(.fb_canvas-processed)').each(function () {
       jQuery(this).addClass('fb_canvas-processed');
       if (typeof(FB) == 'undefined') {
         // FB not yet initialized.
@@ -23,10 +23,10 @@ Drupal.behaviors.fb_canvas = {
     });
 
     // Logout of facebook when logging out of drupal.
-    jQuery("a[href^='https://apps.facebook.com/" + Drupal.settings.fb_canvas.canvas + "/logout']", context).click(FB_Canvas.logout);
+    jQuery("a[href^='https://apps.facebook.com/" + Drupal.settings.fb_canvas.namespace + "/logout']", context).click(FB_Canvas.logout);
 
     // Change 'user/login' links to popup fb connect dialog.
-    jQuery("a[href^='https://apps.facebook.com/" + Drupal.settings.fb_canvas.canvas + "/user/']", context).click(FB_Canvas.login);
+    jQuery("a[href^='https://apps.facebook.com/" + Drupal.settings.fb_canvas.namespace + "/user/']", context).click(FB_Canvas.login);
   }
 };
 

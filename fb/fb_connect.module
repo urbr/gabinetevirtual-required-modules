@@ -1,19 +1,10 @@
 <?php
+
 /**
- * @file
- * Support for Facebook Connect features
- *
- * Note that Facebook connect will work properly only with themes that are
- * Facebook Connect aware.
+ * Facebook Connect
  */
 
-// Drupal variables
-define('FB_CONNECT_VAR_PRIMARY', 'fb_connect_primary_label');
-
-define('FB_CONNECT_VAR_THEME_USERNAME_1', 'fb_connect_theme_username_1');
-define('FB_CONNECT_VAR_THEME_USERNAME_2', 'fb_connect_theme_username_2');
-define('FB_CONNECT_VAR_THEME_USERPIC_1', 'fb_connect_theme_userpic_1');
-define('FB_CONNECT_VAR_THEME_USERPIC_2', 'fb_connect_theme_userpic_2');
+define('FB_CONNECT_PATH_ADMIN', FB_PATH_ADMIN_CONFIG . '/fb_connect');
 
 /**
  * Implements hook_menu().
@@ -21,178 +12,124 @@ define('FB_CONNECT_VAR_THEME_USERPIC_2', 'fb_connect_theme_userpic_2');
 function fb_connect_menu() {
   $items = array();
 
-  // Admin pages
-  $items[FB_PATH_ADMIN . '/fb_connect'] = array(
+  // Use Drupal's menu alter trick to put a connect button on the menu.
+  $items['fb/connect'] = array(
     'title' => 'Facebook Connect',
-    'description' => 'Configure Facebook Connect',
+    'page callback' => 'drupal_not_found', // Because we alter link, below.
+    //'menu_name' => 'fb_connect',
+    'options' => array(
+      'alter' => TRUE,
+      'html' => TRUE,
+      'attributes' => array('class' => array('fb')),
+    ),
+    'access callback' => TRUE, // Javascript will hide connect button from connected users.
+  );
+
+  // Administration
+
+  $items[FB_CONNECT_PATH_ADMIN] = array(
+    'title' => 'Connect',
+    'description' => 'Site-wide connection to Facebook.com.',
     'page callback' => 'drupal_get_form',
-    'page arguments' => array('fb_connect_admin_settings'),
+    'page arguments' => array('fb_connect_admin_form'),
     'access arguments' => array(FB_PERM_ADMINISTER),
     'file' => 'fb_connect.admin.inc',
-    'type' => MENU_LOCAL_TASK,
+    'file path' => drupal_get_path('module', 'fb_connect'),
   );
+
 
 
   return $items;
 }
 
-
 /**
- * Prepare for fbConnect use.  Because a single Drupal might support
- * multiple apps, we don't know in advance which is the fbConnect app.
- */
-function fb_connect_app_init($fb_app) {
-  if (isset($GLOBALS['_fb_app']) &&
-      $GLOBALS['_fb_app']->apikey != $fb_app->apikey) {
-    // If we're in an iframe, only support connect for the iframe app.
-    watchdog('fb_connect', 'Unable to initialize facebook application %label1, because %label2 is already initialized.', array(
-               '%label1' => $fb_app->label,
-               '%label2' => $GLOBALS['_fb_app']->label,
-             ), WATCHDOG_ERROR);
-    return;
-  }
-
-  if ($fb = fb_api_init($fb_app)) {
-    $fbu = $fb->getUser();
-    if ($fbu &&
-        (!isset($GLOBALS['_fb_app']) || $GLOBALS['_fb_app']->apikey != $fb_app->apikey)) {
-      // The user has authorized the app and we now know something about them.  Use a hook to trigger the actions of other modules.
-      fb_invoke(FB_OP_APP_IS_AUTHORIZED, array(
-                  'fbu' => $fbu,
-                  'fb_app' => $fb_app,
-                  'fb' => $fb));
-    }
-
-    // Remember which app we've initialized.
-    _fb_connect_set_app($fb_app);
-    _fb_connect_add_js($fb_app, $fb);
-  }
-  return $fb;
-}
-
-/**
- * Helper function for other modules to know page is connected.
+ * Implements hook_translated_menu_link_alter().
  *
- * Note that this may return data on connect pages and in iframe apps
- * (depending on how iframe is configured).
+ * Customize the link on each page, to return the user to this page after connecting.
+ * Experimental use of '</a>...<a>' because drupal will surround our title with <a>...</a> and for our markup we don't want that.
  */
-function fb_connect_get_app() {
-  return _fb_connect_set_app();
-}
-function _fb_connect_set_app($fb_app = NULL) {
-  $cache = &drupal_static(__FUNCTION__);
-  if (isset($fb_app)) {
-    $cache = $fb_app;
-  }
-  return $cache;
-}
-
-/**
- * Implements hook_fb().
- */
-function fb_connect_fb($op, $data, &$return) {
-  if ($op == FB_OP_CURRENT_APP && !$return && !fb_is_canvas()) {
-    // This will cause fb.module to set the global $_fb when user is logged in via fbConnect.
-    if ($id = variable_get(FB_VAR_ID, NULL)) {
-      // Use $conf['fb_id'] if set in settings.php.
-      $return = fb_get_app(array('id' => $id));
+function fb_connect_translated_menu_link_alter(&$item) {
+  if ($item['link_path'] == 'fb/connect') {
+    if (arg(0) == 'admin' && arg(2) == 'menu') {
+      // Do not alter on admin menu pages so that admins can modify menu links.
     }
-    elseif ($apikey = variable_get(FB_VAR_APIKEY, NULL)) { // Deprecated.  Use fb_id instead.
-      // Use $conf['fb_apikey'] if set in settings.php.
-      $return = fb_get_app(array('apikey' => $apikey));
+    else {
+      // This was an attempt to custom theme menu item.  It doesn't work when menu_navigation_links() is called, so using the </a>...</a> hack below instead.
+      //$item['menu_name'] = 'fb_connect';  // $element['#theme'] = 'menu_link__' . strtr($data['link']['menu_name'], '-', '_');
+
+      /* This was an attempt to let javascript show/hide the proper link based on whether the user is currently connected.  The link generated this was does not look very good alongside other drupal menu links.
+
+      $item['title'] = '</a>' . theme('fb_markup', array(
+                                        'options' => array('wrapper' => 'span'),
+                                        'not_connected' => theme('fb_login_button', array()),
+                                        'connected' => '<span class="fb_replace"><!---!name---></span>',
+                                      )) . '<a>';
+      */
+
+      $img_file = drupal_get_path('module', 'fb') . '/images/f_logo.png';
+      $img_src = url($img_file, array(
+                       'fb_url_alter' => FALSE,
+                     ));
+
+      // Replace the menu item link with a link customized for the current page.
+      if ($token = fb_user_token()) {
+        try {
+          $me = fb_graph('me', $token);
+
+          // user is already connected.
+          $item['href'] = $me['link'];
+          $item['title'] = t('<img class="fb_logo" src="!img_src" />&nbsp;%name', array(
+                               '%name' => $me['name'],
+                               '!img_src' => $img_src,
+                             ));
+        }
+        catch (Exception $e) {
+          // Give user another chance to connect.
+          $item['href'] = fb_client_auth_url();
+          $item['title'] = t('<img class="fb_logo" src="!img_src" />&nbsp;!title', array(
+                               '!title' => $item['title'],
+                               '!img_src' => $img_src,
+                             ));
+        }
+      }
+      else {
+        $item['href'] = fb_client_auth_url();
+        if (empty($item['href'])) {
+          // Facebook Connect is not configured.
+          if (user_access(FB_PERM_ADMINISTER)) {
+            $item['title'] = t('<em>Facebook Connect</em>');
+            $item['href'] = FB_CONNECT_PATH_ADMIN;
+          }
+          else {
+            $item['hidden'] = TRUE;
+          }
+        }
+        else {
+          $item['title'] = t('<img class="fb_logo" src="!img_src" />&nbsp;!title', array(
+                             '!title' => $item['title'],
+                             '!img_src' => $img_src,
+                           ));
+        }
+      }
     }
-    elseif ($label = variable_get(FB_CONNECT_VAR_PRIMARY, NULL)) {
-      $return = fb_get_app(array('label' => $label));
-    }
-  }
-  elseif ($op == FB_OP_POST_INIT) {
-    if (!fb_is_tab()) {
-      // Init Facebook javascript for primary app
-      _fb_connect_add_js($data['fb_app'], $data['fb']);
-    }
-
-    // Include our admin hooks.
-    if (fb_is_fb_admin_page()) {
-      module_load_include('inc', 'fb_connect', 'fb_connect.admin');
-    }
-  }
-}
-
-/**
- * This wrapper function around drupal_add_js() ensures that our
- * settings are added once and only once when needed.
- *
- */
-function _fb_connect_add_js($fb_app, $fb) {
-  $just_once = &drupal_static(__FUNCTION__);
-
-  if (fb_is_tab())
-    // Tabs are FBML.
-    return;
-
-  if (!isset($just_once)) {
-    drupal_add_js(array(
-                    'fb_connect' => array(
-                      'front_url' => url('<front>'),
-                      'fbu' => fb_facebook_user(),
-                      'uid' => $GLOBALS['user']->uid,
-                    ),
-                  ), 'setting');
-    drupal_add_js(drupal_get_path('module', 'fb_connect') . '/fb_connect.js');
-    $just_once = TRUE;
-  }
-
-  // If we are not the global $_fb_app
-  if ($fb_app) {
-    $settings = fb_js_settings();
-    if (!isset($settings['fb_init_settings']['appId']) ||
-        $settings['fb_init_settings']['appId'] != $fb_app->id) {
-      // Ensure JS initializes with the proper apikey.  We may reach this if
-      // there is no "primary" app.
-      // @TODO fb.module should have a helper to make this cleaner.
-
-      $settings['fb_init_settings']['appId'] = $fb_app->id;
-      fb_js_settings('apikey', $fb_app->apikey);
-      fb_js_settings('fbu', fb_facebook_user($fb));
-      fb_js_settings('fb_init_settings', $settings['fb_init_settings']);
-      // fb.module will add settings to footer.
-    }
+    $item['localized_options']['attributes']['class'][] = 'fb';
   }
 }
 
 
-/**
- * Default markup for our login block.
- */
-function _fb_connect_block_login_defaults() {
-  return array('anon_not_connected' => array(
-                 'title' => t('Facebook Connect'),
-                 'body' => array('value' => '<div class="fb-login-button" scope="!perms" data-show-faces="false"></div>', 'format' => NULL),
-               ),
-               'user_not_connected' => array(
-                 'title' => t('Facebook Connect'),
-                 'body' => array('value' => '<div class="fb-login-button" scope="!perms" data-show-faces="false"></div>', 'format' => NULL),
-               ),
-               'connected' => array(
-                 'title' => t('Facebook Connect'),
-                 // Logout commented out, because drupal has logout link.
-                 'body' => array('value' => '<fb:profile-pic uid=loggedinuser linked="false" facebook-logo="true"></fb:profile-pic><!--<fb:login-button autologoutlink=true></fb:login-button>-->', 'format' => NULL), // fb:profile-pic is deprecated! https://developers.facebook.com/docs/reference/fbml/profile-pic/
-               ),
-  );
-}
+//// Facebook Connect login/status block.
 
 /**
  * Implements hook_block_info().
  */
 function fb_connect_block_info() {
   $items = array();
-  foreach (fb_get_all_apps() as $fb_app) {
-    $d = 'login_' . $fb_app->label;
-    $items[$d] = array(
-      'info' => t('Facebook Connect Login to !app',
-                  array('!app' => $fb_app->title)),
-    );
-  }
+
+  // Login to default/primary app.
+  $items['login_primary'] = array(
+    'info' => t('Facebook Connect Login'),
+  );
+
   return $items;
 }
 
@@ -233,13 +170,13 @@ function fb_connect_block_configure($delta = '') {
   );
   $form['config']['anon_not_connected']['#title'] = t('Anonymous user, not connected');
   $form['config']['anon_not_connected']['#description'] = t('Settings when local user is Anonymous, and not connected to Facebook.  Typically a new account will be created when the user clicks the connect button.');
-  $form['config']['anon_not_connected']['body']['#description'] = t('Suggestion: %default .', array('%default' => $orig_defaults['anon_not_connected']['body']['value']));
+  $form['config']['anon_not_connected']['body']['#description'] = t('Suggested markup: %default .', array('%default' => $orig_defaults['anon_not_connected']['body']['value']));
 
   $form['config']['user_not_connected']['#title'] = t('Registered user, not connected');
   $form['config']['user_not_connected']['#description'] = t('Settings when local user is registered, and not connected to Facebook.  Typically the facebook id will be linked to the local id after the user clicks the connect button.');
-  $form['config']['user_not_connected']['body']['#description'] = t('Suggestion: %default .', array('%default' => $orig_defaults['user_not_connected']['body']['value']));
+  $form['config']['user_not_connected']['body']['#description'] = t('Suggested markup: %default .', array('%default' => $orig_defaults['user_not_connected']['body']['value']));
   $form['config']['connected']['#title'] = t('Connected user');
-  $form['config']['connected']['#description'] = t('Settings when local user is connected to Facebook.  You may render facebook\'s logout button, and/or information about the user.  Consider using <a target="_blank" href="!xfbml_url">XFBML</a> such as &lt;fb:name uid=!fbu&gt;&lt;/fb:name&gt; or &lt;fb:profile-pic uid=!fbu&gt;&lt;/fb:profile-pic&gt;', array('!xfbml_url' => 'http://wiki.developers.facebook.com/index.php/XFBML'));
+  $form['config']['connected']['#description'] = t('Settings when local user is connected to Facebook.  Use <a target="_blank" href="!xfbml_url">XFBML</a> such as &lt;fb:name uid=loggedinuser&gt;&lt;/fb:name&gt; or &lt;fb:profile-pic uid=loggedinuser&gt;&lt;/fb:profile-pic&gt; only if you are using facebook\'s javascript SDK.', array('!xfbml_url' => 'http://wiki.developers.facebook.com/index.php/XFBML'));
   $form['config']['connected']['body']['#description'] = t('Note that <strong>!fbu</strong> will be replaced with the user\'s facebook id.<br/>Suggestion: %default .', array('%default' => $orig_defaults['connected']['body']['value']));
 
   return $form;
@@ -253,45 +190,57 @@ function fb_connect_block_save($delta = '', $edit = array()) {
 }
 
 function fb_connect_block_view($delta = '') {
-  if (!fb_is_tab()) {
-    // Hide block on tabs, where the $fbu is actually the page, not the user.
+  // Hide block on tabs, where the $fbu is actually the page, not the user.
+  //if (!fb_is_tab()) {
+  if (TRUE) { // XXX
     if (strpos($delta, 'login_') === 0) {
       // Login block
-      $label = substr($delta, 6); // length of 'login_'
-      $fb_app = fb_get_app(array('label' => $label));
+      $fba = substr($delta, 6); // length of 'login_'
 
-      if ($fb_app &&
-          ($fb = fb_connect_app_init($fb_app))) {
-        $fbu = $fb->getUser();
+      if ($fba == 'primary') {
+        $app = fb_get_app();
+      }
+      else {
+        // TODO: load details for client_id.
+        //dpm(func_get_args(), __FUNCTION__);
+        return NULL;
+      }
 
-        //_fb_connect_add_js($fb_app); moved to fb_connect_app_init()
+      if (!empty($app)) {
+        if (!empty($_SESSION['fb'][$app['fba']])) {
+          $sdata = $_SESSION['fb'][$app['fba']];
+        }
 
-        $base = drupal_get_path('module', 'fb_connect');
+        /*
+        $token = fb_user_token($app);
+        dpm($token, __FUNCTION__);
+        if ($token) {
+          try {
+            // debug. should not be needed.
+            $me = fb_graph('me', $token);
+          }
+          catch (Exception $e) {
+            fb_log_exception($e, __FUNCTION__);
+          }
+        }
+        */
 
         $defaults = variable_get('fb_connect_block_' . $delta, _fb_connect_block_login_defaults());
 
-        if (!$fbu && $GLOBALS['user']->uid >= 1) {
-          // Render only logged in user markup.
-          $subject = $defaults['user_not_connected']['title'];
-          $content = $defaults['user_not_connected']['body']['value'];
-          $format = $defaults['user_not_connected']['body']['format'];
+        // Render both connected and not-connected markup to the page.  Javascript will show or hide it.
+        $subject_connected = $defaults['connected']['title'];
+        $content_connected = $defaults['connected']['body']['value'];
 
-          $subject_connected = NULL;
-          $content_connected = NULL;
-        }
-        else {
-          // Render both connected and not connected markup.
+        if (user_is_anonymous()) {
           $subject = $defaults['anon_not_connected']['title'];
           $content = $defaults['anon_not_connected']['body']['value'];
           $format = $defaults['anon_not_connected']['body']['format'];
-
-          $subject_connected = $defaults['connected']['title'];
-          $content_connected = $defaults['connected']['body']['value'];
-          $content_connected = str_replace('!fbu', 'loggedinuser', $content_connected); // support deprecated !fbu
         }
-
-        // substitute fbu
-        $content = str_replace('!fbu', $fbu, $content);
+        else {
+          $subject = $defaults['user_not_connected']['title'];
+          $content = $defaults['user_not_connected']['body']['value'];
+          $format = $defaults['user_not_connected']['body']['format'];
+        }
 
         // substitute perms
         $perms = array();
@@ -303,11 +252,9 @@ function fb_connect_block_view($delta = '') {
         if ($format) {
           $content = check_markup($content, $format, '', FALSE);
         }
-        if ($subject_connected !== NULL) {
-          $subject_connected = check_plain($subject_connected);
-          if ($format_connected = $defaults['connected']['body']['format']) {
-            $content_connected = check_markup($content_connected, $format_connected, FALSE);
-          }
+        $subject_connected = check_plain($subject_connected);
+        if ($format_connected = $defaults['connected']['body']['format']) {
+          $content_connected = check_markup($content_connected, $format_connected, FALSE);
         }
 
         $block = array(
@@ -321,6 +268,7 @@ function fb_connect_block_view($delta = '') {
                                'connected' => $content_connected,
                              )),
         );
+
         return $block;
       }
     }
@@ -328,161 +276,31 @@ function fb_connect_block_view($delta = '') {
 }
 
 /**
- * Helper returns configuration for this module, on a per-app basis.
+ * Default markup for our login block.
  */
-function _fb_connect_get_config($fb_app) {
-  $fb_app_data = fb_get_app_data($fb_app);
-  $config = isset($fb_app_data['fb_connect']) ? $fb_app_data['fb_connect'] : array();
-
-  // Merge in defaults
-  $config += array(
-
+function _fb_connect_block_login_defaults() {
+  return array('anon_not_connected' => array(
+                 'title' => t('Facebook Connect'),
+                 'body' => array(
+                   'value' => theme('fb_login_button'),
+                   'format' => NULL,
+                 ),
+               ),
+               'user_not_connected' => array(
+                 'title' => t('Facebook Connect'),
+                 'body' => array(
+                   'value' => theme('fb_login_button'),
+                   'format' => NULL,
+                 ),
+               ),
+               'connected' => array(
+                 'title' => t('Facebook Connect'),
+                 // This somewhat ugly markup will be replaced in fb.js with user's name and picture.
+                 'body' => array(
+                   'value' => '<div class="fb_replace"><!--- Connected as !name. &nbsp;</div><img src=//graph.facebook.com/!fbu/picture /> ---> </div>',
+                   'format' => NULL,
+                 ),
+                 //'body' => array('value' => '<fb:profile-pic uid=loggedinuser linked="false" facebook-logo="true"></fb:profile-pic><!--<fb:login-button autologoutlink=true></fb:login-button>-->', 'format' => NULL), // fb:profile-pic is deprecated! https://developers.facebook.com/docs/reference/fbml/profile-pic/
+               ),
   );
-  return $config;
-}
-
-/**
- * Implements hook_form_alter().
- */
-function fb_connect_form_alter(&$form, &$form_state, $form_id) {
-  // Add our settings to the fb_app edit form.
-  if (isset($form['fb_app_data'])) {
-    $fb_app = $form['#fb_app'];
-
-    $form['fb_app_data']['fb_connect'] = array(
-      '#type' => 'fieldset',
-      '#title' => 'Facebook connect',
-      '#tree' => TRUE,
-      '#collapsible' => TRUE,
-      '#collapsed' => $fb_app->label ? TRUE : FALSE,
-    );
-
-    // "Primary" will be initialized on every non-canvas page.
-    $primary_label = variable_get(FB_CONNECT_VAR_PRIMARY, NULL);
-    $form['fb_app_data']['fb_connect']['primary'] = array(
-      '#type' => 'checkbox',
-      '#title' => t('Primary'),
-      '#description' => t('Initialize fbConnect javascript on all (non-canvas) pages.  If this site supports multiple Facebook Apps, this may be checked for at most one.'),
-      '#default_value' => isset($fb_app->label) && ($primary_label == $fb_app->label),
-    );
-    if (($primary_label) && ($primary_label != $fb_app->label)) {
-      $form['fb_app_data']['fb_connect']['primary']['#description'] .= '<br/>' .
-        t('Note that checking this will replace %app as the primary Facebook Connect app.', array('%app' => $primary_label));
-    }
-    $form['buttons']['submit']['#submit'][] = 'fb_connect_app_submit';
-  }
-}
-
-/**
- * Submit callback.  Sets or unsets "primary" app.
- */
-function fb_connect_app_submit($form, &$form_state) {
-  $values = $form_state['values'];
-  $label = $values['label'];
-  $data = $values['fb_app_data']['fb_connect'];
-  if ($data['primary']) {
-    variable_set(FB_CONNECT_VAR_PRIMARY, $label);
-    drupal_set_message(t('%label is the primary Facebook Connect application.', array('%label' => $label)));
-  }
-  elseif ($label == variable_get(FB_CONNECT_VAR_PRIMARY, NULL)) {
-    // This app was the primary one, but the user has unchecked it.
-    variable_set(FB_CONNECT_VAR_PRIMARY, NULL);
-  }
-}
-
-
-/**
- * Implements hook_theme_registry_alter().
- *
- * Override theme functions for things that can be displayed using
- * XFBML.  Currently overriding username and user_picture.  We rename
- * the original entries, as we will use them for users without
- * javascript enabled.
- *
- * This hook is not well documented.  Who knows what its supposed to
- * return?  No doubt this will need updating with each new version of
- * Drupal.
- */
-function fb_connect_theme_registry_alter(&$theme_registry) {
-  // Ideally, we'd do this only on themes which will certainly be used for facebook connect pages.
-  if (variable_get(FB_CONNECT_VAR_THEME_USERNAME_2, TRUE) ||
-      (variable_get(FB_CONNECT_VAR_THEME_USERNAME_1, TRUE) &&
-       $theme_registry['username']['type'] == 'module')) {
-    // Re-register the original theme function under a new name.
-    $theme_registry['fb_connect_username_orig'] = $theme_registry['username'];
-    // Override theme username
-    $theme_registry['username'] = array(
-      'variables' => array('object' => NULL),
-      'function' => 'fb_connect_theme_username_override',
-      'type' => 'module',
-      'theme path' => drupal_get_path('module', 'fb_connect'),  // something is needed here but it isn't used
-    );
-  }
-
-  if (variable_get(FB_CONNECT_VAR_THEME_USERPIC_2, TRUE) ||
-      (variable_get(FB_CONNECT_VAR_THEME_USERPIC_1, TRUE) &&
-       $theme_registry['user_picture']['type'] == 'module')) {
-    // Re-register the original theme function under a new name.
-    $theme_registry['fb_connect_user_picture_orig'] = $theme_registry['user_picture'];
-    // Override theme username
-    $theme_registry['user_picture'] = array(
-      'variables' => array('account' => NULL),
-      'function' => 'fb_connect_theme_user_picture_override',
-      'type' => 'module',
-      'theme path' => drupal_get_path('module', 'fb_connect'), // something is needed here but it isn't used
-    );
-  }
-}
-
-/**
- * Our replacement for theme('user_picture', ...)
- */
-function fb_connect_theme_user_picture_override($variables) {
-  $account = $variables['account'];
-  // Markup without fb_connect.
-  $orig = theme('fb_connect_user_picture_orig', array('account' => $account));
-
-  // Respect Drupal's profile pic, if uploaded.
-  if (isset($account->picture) && $account->picture) {
-    return $orig;
-  }
-
-  if ($fbu = fb_get_object_fbu($account)) {
-    $output = theme('fb_user_picture', array(
-                      'fbu' => $fbu,
-                      'account' => $account,
-                      'orig' =>  $orig,
-                    ));
-  }
-  else {
-    $output = $orig;
-  }
-  return $output;
-}
-
-/**
- * Our replacement for theme('username', ...)
- */
-function fb_connect_theme_username_override($variables) {
-  // Static helps avoid altering username.  See fb_username_alter.
-  $is_theming_username = &drupal_static('fb_theming_username');
-  $is_theming_username = TRUE;
-
-  $account = $variables['account'];
-  $orig = theme('fb_connect_username_orig', $variables);
-
-  if ($account && ($fbu = fb_get_object_fbu($account))) {
-    // Theme the username with XFBML, using original username as backup.
-    $return_me = theme('fb_username', array(
-                         'fbu' => $fbu,
-                         'account' => $account,
-                         'orig' =>  $orig,
-                       ));
-  }
-  else {
-    $return_me = $orig;
-  }
-
-  $is_theming_username = FALSE;
-  return $return_me;
 }

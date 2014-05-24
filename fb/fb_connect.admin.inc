@@ -1,88 +1,129 @@
 <?php
-/**
- * @file
- * Admin pages and forms for connect settings.
- *
- */
+
+require_once(drupal_get_path('module', 'fb') . '/fb.admin.inc');
 
 /**
- * Implements hook_fb_admin().
+ * Form callback.
  */
-function fb_connect_fb_admin($op, $data, &$return) {
-  if ($op == FB_ADMIN_OP_SET_PROPERTIES) {
-    $return['connect_url'] = fb_connect_get_connect_url($data['fb_app']);
-    if (variable_get(FB_VAR_SECURE_URLS, FB_SECURE_URLS_SOMETIMES) == FB_SECURE_URLS_ALWAYS) {
-      $return['connect_url'] = str_replace('http://', 'https://', $return['connect_url']);
-    }
-    else {
-      $return['connect_url'] = str_replace('https://', 'http://', $return['connect_url']);
-    }
-  }
-  elseif ($op == FB_ADMIN_OP_LIST_PROPERTIES) {
-    $return[t('Connect URL')] = 'connect_url';
-  }
-}
+function fb_connect_admin_form() {
 
-/**
- * Convenience method to get an apps connect URL.
- *
- */
-function fb_connect_get_connect_url($fb_app) {
-  // absolute URL with no rewriting applied
-  global $base_url;
-
-  return $base_url . '/';
-
-}
-
-
-/**
- * Form builder; Configure settings for this site.
- *
- * @ingroup forms
- * @see system_settings_form()
- */
-function fb_connect_admin_settings() {
-  $options = array(0 => t('<none>')) +
-    fb_admin_get_app_options(FALSE);
-  if (count($options) == 1) {
-    $message = t('You must create an app first!');
-    drupal_set_message($message, 'error');
-    return array('help' => array('#value' => $message));
-  }
-
-  $form[FB_CONNECT_VAR_PRIMARY] = array(
-    '#type' => 'select',
-    '#options' => $options,
-    '#title' => t('Primary Connect Application'),
-    '#description' => t('Inialize one application on every page.'),
-    '#default_value' => variable_get(FB_CONNECT_VAR_PRIMARY, NULL),
-  );
-
-  $form['theme_settings'] = array(
+  $form['app'] = array(
     '#type' => 'fieldset',
-    '#title' => t('Theme overrides'),
+    '#title' => t('Application'),
+    '#description' => t('Facebook Connect uses the <a href=!app_url>site-wide default application</a>.', array(
+                          '!app_url' => url(FB_PATH_ADMIN_CONFIG . '/settings/app'),
+                        )),
   );
-  $form['theme_settings'][FB_CONNECT_VAR_THEME_USERNAME_1] = array(
-    '#type' => 'checkbox',
-    '#title' => t('Override default theme_username() function.'),
-    '#default_value' => variable_get(FB_CONNECT_VAR_THEME_USERNAME_1, TRUE),
-  );
-  $form['theme_settings'][FB_CONNECT_VAR_THEME_USERNAME_2] = array(
-    '#type' => 'checkbox',
-    '#title' => t('Override phptemplate_username() functions defined in themes.'),
-    '#default_value' => variable_get(FB_CONNECT_VAR_THEME_USERNAME_2, TRUE),
-  );
-  $form['theme_settings'][FB_CONNECT_VAR_THEME_USERPIC_1] = array(
-    '#type' => 'checkbox',
-    '#title' => t('Override default theme_user_picture() function.'),
-    '#default_value' => variable_get(FB_CONNECT_VAR_THEME_USERPIC_1, TRUE),
-  );
-  $form['theme_settings'][FB_CONNECT_VAR_THEME_USERPIC_2] = array(
-    '#type' => 'checkbox',
-    '#title' => t('Override phptemplate_user_picture() functions defined in themes.'),
-    '#default_value' => variable_get(FB_CONNECT_VAR_THEME_USERPIC_2, TRUE),
-  );
-  return system_settings_form($form);
-}
 
+  $app = fb_get_app();
+
+  $form['app']['info'] = fb_admin_app_info($app);
+
+  // Display markup to indicate whether facebook connect will work properly.
+  // Javascript should show/hide the right portion of the following.
+  if ($app) {
+    $form['fb_connect_status_test'] = array(
+      '#type' => 'fieldset',
+      '#title' => t('Connect Status Test'),
+      '#description' => t('Facebook Connect requires an application specifically configured to work with this drupal server.'),
+    );
+
+    $markup = array('#type' => 'markup', '#prefix' => '<p>', '#suffix' => '</p>');
+
+    // Markup to be displayed depending on getLoginStatus result.
+    // Takes advantage of the fact that getLoginStatus will not call its callback when app cannot support facebook connect.
+    $form['fb_connect_status_test']['status_no_fb'] = array(
+      '#prefix' => '<div class="fb_connect_admin_status fb_connect_admin_status_no_fb fb_new_token_hide">', '#suffix' => '</div>',
+    );
+    $form['fb_connect_status_test']['status_no_fb'][] = array(
+      '#markup' => t('TODO'),
+    ) + $markup;
+
+    $form['fb_connect_status_test']['status_no_fb'][] = array(
+      '#markup' => 'test: ' . theme('fb_login_button'),
+    ) + $markup;
+
+    $form['fb_connect_status_test']['status_new_token'] = array(
+      '#prefix' => '<div class="fb_connect_admin_status fb_new_token_show fb_hidden">', '#suffix' => '</div>',
+    );
+    $form['fb_connect_status_test']['status_new_token'][] = array(
+      '#markup' => t('Received token for !application.  Facebook Connect appears to be working.', array(
+                       '!application' => '<span class="fb_new_token_app_name">UNKNOWN APP</span>',
+                     )),
+    ) + $markup;
+
+    $form['fb_connect_status_test']['status_none'] = array(
+      '#type' => 'markup',
+      '#prefix' => '<div class="fb_connect_admin_status fb_connect_admin_status_none">', '#suffix' => '</div>',
+      '#markup' => "<p>Connect status: <strong>error</strong>.  Your application cannot support Facebook Connect on this server.</p>",
+    );
+    $form['fb_connect_status_test']['status_unknown'] = array(
+      '#type' => 'markup',
+      '#prefix' => '<div class="fb_connect_admin_status fb_connect_admin_status_unknown">', '#suffix' => '</div>',
+      '#markup' => "<p>Connect status: <strong>not connected</strong>.  Either you are not logged into facebook, or have not authorized the application.</p><p><fb:login-button>Connect to Facebook</fb:lgin-button></p>",
+    );
+    $form['fb_connect_status_test']['status_connected'] = array(
+      '#type' => 'markup',
+      '#prefix' => '<div class="fb_connect_admin_status fb_connect_admin_status_connected">', '#suffix' => '</div>',
+      '#markup' => "<p>Connect status: <strong> OK, connected to Facebook</strong>.</p><p><fb:name uid=loggedinuser useyou=false></fb:name> <fb:profile-pic uid=loggedinuser></fb:profile-pic></p>",
+    );
+
+
+    drupal_add_js(drupal_get_path('module', 'fb_connect') . '/fb_connect.admin.js', array(
+                    'type' => 'file',
+                    'scope' => 'header',
+                    'group' => JS_LIBRARY,
+                  ));
+
+  }
+
+
+
+
+  $form[] = array(
+    '#type' => 'markup',
+    '#markup' => t('There are no settings to save here (yet).'),
+  );
+  return $form;
+
+  // TODO: full fledge system_settings_form here.
+
+
+
+
+  try {
+    $app = fb_get_app();
+    $app_data = fb_graph($app['client_id']); // . '?metadata=1');
+
+    $form['fb_application'] = array(
+      '#type' => 'fieldset',
+      '#title' => t('Application'),
+      '#description' => t('Using <a target=_blank href=!app_url>%name</a>.  See the <a href=!admin_url>application tab</a> to change this.', array(
+                            '!admin_url' => url(FB_PATH_ADMIN_APP),
+                            '!app_url' => $app_data['link'],
+                            '%name' => $app_data['name'],
+                          )),
+    );
+
+  /*
+  $form['fb_connect_test'] = array(
+    '#type' => 'fieldset',
+    '#title' => t('Connect Test'),
+    '#description' => t('Facebook Connect requires Facebook\'s javascript to be initialized, and also an <em>application specifically configured to work with this drupal server</em>.'),
+  );
+
+  $form['fb_connect_test']['button'] = array(
+    '#type' => 'markup',
+    '#prefix' => '<div class=fb_not_connected>', '#suffix' => '</div>',
+    '#markup' => '<p>Test button: <fb:login-button>Click here to test Facebook Connect</fb:login-button></p><ul><li>If you don\'t see a button, javascript is not initialized.</li><li>Click the button.  If you see "an error occurred..." instead of an authorization dialog, then the application is not configured to work with this server. <br/>(Note, it is not necessary to log into facebook or accept the authorization.)</li></ul>',
+  );
+  */
+
+
+    return system_settings_form($form);
+  }
+  catch (exception $e) {
+    drupal_set_message($e->getMessage(), 'error');
+    return array();
+  }
+}

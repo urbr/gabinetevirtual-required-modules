@@ -1,199 +1,530 @@
-/**
- * @file
- * Javascript behaviors and helpers for modules/fb.
- */
 
+// Our global is FB_JS, not "FB" to avoid conflict with Facebook's JS SDK.
 FB_JS = function(){};
-FB_JS.fbu = null; // Detect session changes
-FB_JS.ignoreEvents = false; // Hack makes login status test possible
-FB_JS.reloadParams = {}; // Pass data to drupal when reloading
-
+// Client-side session info from cookie.
+FB_JS.session = {};
 FB_JS.fbu = null;
 
-if (!window.Node) { // IE
-  FB_JS.DOCUMENT_NODE = 9;
-}
-else {
-  FB_JS.DOCUMENT_NODE = window.Node.DOCUMENT_NODE;
-}
+FB_JS.reloadParams = {}; // Pass data to drupal when reloading
+FB_JS.fb_token_invalid = false; // Semaphore see tokenInvalidHandler.
+
+// Semaphores prevent us from processing events more than once.
+FB_JS.semaphores = {};
 
 /**
  * Drupal behaviors hook.
+ *
  * Called when page is loaded, or content added via javascript.
  */
 (function ($) {
   Drupal.behaviors.fb = {
-    attach : function(context) {
-      FB_JS.drupalBehaviors(context);
+    attach : function(context, settings) {
+      // In some cases the page contains elements to be shown only after new permissions are granted.  See new token handler.
+      jQuery('.fb_has_permission', context).hide();
+      jQuery('.fb_needs_permission', context).show();
+
+      // Code in this clause is once per page.
+      $('body:not(.fb_processed)', context).each(function() {
+        $(this).addClass('fb_processed');
+
+        // JQuery pseudo-events we are interested in.
+        jQuery(document).bind('fb_new_token', FB_JS.newTokenHandler);
+        jQuery(document).bind('fb_token_invalid', FB_JS.tokenInvalidHandler);
+
+        // Session may have our tokens.
+        var sess_cookie = jQuery.cookie('fb_js_session');
+        if (sess_cookie) {
+          FB_JS.session = jQuery.parseJSON(sess_cookie);
+        }
+
+        if (Drupal.settings.fb.client_id) {
+          var app_settings = FB_JS.getAppSettings(Drupal.settings.fb.client_id);
+          if (app_settings.access_token === 0) {
+            // Server thinks this user is logged out.  Let's make sure our javascript session agrees.
+            if (FB_JS.session[Drupal.settings.fb.client_id]) {
+              delete FB_JS.session[Drupal.settings.fb.client_id];
+              FB_JS.setCookie('fb_js_session', JSON.stringify(FB_JS.session));
+            }
+          }
+          else if (app_settings.access_token) {
+            // Server thinks user is logged in.  Make sure javascript thinks the same.
+            FB_JS.session[Drupal.settings.fb.client_id] = {
+              access_token: app_settings.access_token,
+              client_id: Drupal.settings.fb.client_id
+            };
+          }
+        }
+
+        // If hash contains access_token=..., it is part of facebook's client-side authentication protocol.
+        var hash = window.location.hash;
+        if (hash) {
+
+          // Parse access_token and, sometimes, expires_in.
+          var vars = FB_JS.parseVars(hash.slice(1)); // Slice off '#'
+
+          if (vars.access_token) {
+            // Calling graph() confirms token is valid.
+            // @todo: implement graph batch and get both 'me' and 'app'.
+            // @todo: avoid repeating this call when page is refreshed.
+            FB_JS.graphBatch(['me', 'app'], {
+              data: {access_token: vars.access_token},
+              success: function(gdata) {
+                //debugger;
+                // Compile data for fb_new_token event.  Must be object not array for trigger().
+                var data = {};
+                //data.app = gdata['app'];
+                //data.me = gdata['me'];
+                jQuery.extend(data, gdata); // app and me
+                data.context = context;
+                jQuery.extend(data, vars); // access_token and expires_in
+                jQuery.event.trigger('fb_new_token', data);
+              },
+              error: function(edata) {
+                debugger;
+                console.warn('Access token not valid (' + vars.access_token + '). ' + edata.error.message);
+                jQuery.event.trigger('fb_devel', edata);
+              }
+            });
+          }
+        }
+        else {
+          // Test the current session token.  This detects if a user has logged out of facebook.
+          // TODO: control whether this test runs on every page.  Better to test less frequently.
+          if (FB_JS.session[Drupal.settings.fb.client_id]) {
+            token = FB_JS.session[Drupal.settings.fb.client_id].access_token;
+            if (token && token != 'null') { // @todo figure out how 'null' gets in there!
+              FB_JS.graph({
+                path: 'me',
+                data: {access_token: token},
+                success: function (gdata) {
+                  //debugger;
+                },
+                error: function(edata) {
+                  debugger;
+                  // We don't actually need to act here. FB_JS.graph will handle an invalid token.
+                }
+              });
+            }
+          }
+        }
+
+        // Trigger an event, so third parties may act after we've sorted our settings and token.
+        jQuery.event.trigger('fb_js_init', Drupal.settings.fb); // Not to be confused with fb_init event.
+      }); // End once per page clause.
+
+      // Page elements may change depending on whether user is currently connected.
+      FB_JS.doGraphReplace(context);
+      FB_JS.doReplace(context);
+      FB_JS.doShowHide(context);
+
     }
   };
+
 })(jQuery);
 
+
 /**
- * Called when page is loaded, or content added via javascript.
+ * Convenient way to to test whether user is currently connected.
  */
-FB_JS.drupalBehaviors = function(context) {
-  // Sanity check.
-  if (!Drupal.settings.fb) {
-    // Reach here when Drupal footer is not rendered in page template.
-    Drupal.settings.fb = {};
+FB_JS.connected = function(client_id) {
+  client_id = client_id || Drupal.settings.fb.client_id;
+  if (FB_JS.session[client_id] && FB_JS.session[client_id].access_token) {
+    return true;
   }
+  return false;
+}
 
-  // Respond to our jquery pseudo-events
-  var events = jQuery(document).data('events');
-  if (!events || !events.fb_session_change) {
-    jQuery(document).bind('fb_session_change', FB_JS.sessionChangeHandler);
+/**
+ * Calculate the connect status and show/hide portions of the page.
+ *
+ * TODO: enhance this to cover apps other than primary.
+ */
+FB_JS.doShowHide = function(context) {
+  if (Drupal.settings.fb.client_id) {
+    if (FB_JS.session[Drupal.settings.fb.client_id]) {
+      jQuery('.fb_not_connected', context).hide();
+      jQuery('.fb_connected', context).show();
+      jQuery('input.fb_connect_required', context).attr('disabled', false).show();
+    }
+    else {
+      jQuery('.fb_not_connected', context).show();
+      jQuery('.fb_connected', context).hide();
+      jQuery('input.fb_connect_required', context).attr('disabled', true).show();
+    }
   }
+};
 
-  // If FB is not yet initialized, fbAsyncInit() will be called when it is.
-  if (typeof(FB) != 'undefined') {
-    // Render any XFBML markup that may have been added by AJAX.
-    jQuery(context).each(function() {
-      var elem = jQuery(this).get(0);
-      if (elem.nodeType == FB_JS.DOCUMENT_NODE) { // Popups are entire document.
-        // FB.XFBML.parse() fails if passed document.  Pass body element instead.
-        elem = jQuery(context).find('body').get(0);
-      }
+/**
+ * Where markup has data-fbu attributes, we replace with data learned from facebook graph.*/
+FB_JS.doGraphReplace = function(context) {
+  // First all the things we need to query.
+  var fbus = [];
+  var added = {};
 
-      try {
-        FB.XFBML.parse(elem);
-      }
-      catch(error) {
-        jQuery.event.trigger('fb_devel', error);
+  jQuery('[data-fbu]').each(function() {
+    var fbu = jQuery(this).attr('data-fbu');
+    if (added.hasOwnProperty(fbu)) {
+      // Already added.
+    }
+    else {
+      fbus.push(fbu);
+      added[fbu] = 1;
+    }
+  });
+
+  // Here, we would like to do a batch get of all fbus.
+  // But batch requires an access token we may not have.
+  // TODO: use batch when user token is known.
+
+  for (var i = 0; i < fbus.length; i++) {
+    var fbu = fbus[i];
+    // Call graph for each user we need to know about.
+    // A single call to graph does not require a token, unlike batch.
+    // May return less data than a query with a token, but will return a name in most cases.
+    FB_JS.graph({
+      path: fbu,
+      success: function(gdata) {
+        if (gdata.name) {
+          jQuery(".username[data-fbu='" + gdata.id + "']").html(gdata.name);
+        }
+      },
+      error: function(edata) {
+        debugger;
       }
     });
-
-    FB_JS.showConnectedMarkup(Drupal.settings.fb.fbu, context);
   }
+  return; // batch code below not yet working.
 
-  // Markup with class .fb_show should be visible if javascript is enabled.  .fb_hide should be hidden.
-  jQuery('.fb_hide', context).hide();
-  jQuery('.fb_show', context).show();
+  var fba = Drupal.settings.fb.client_id;
 
-  if (Drupal.settings.fb.fb_reloading) {
-    // The reloading flag helps us avoid infinite loops.  But will accidentally prevent a reload in some cases. We really want to prevent a reload for a few seconds.
-    setTimeout(function() {Drupal.settings.fb.fb_reloading = false;}, 5000);
+  FB_JS.graphBatch(fbus, {
+    data: {
+      // TODO access token
+    },
+    success : function(gdata) {
+      debugger;
+    },
+    error : function(edata) {
+      debugger;
+    }
+  });
+};
+
+
+FB_JS.doReplace = function(context) {
+  if (Drupal.settings.fb.client_id) {
+    var fba = Drupal.settings.fb.client_id;
+    if (FB_JS.session[fba]) {
+      if (!FB_JS.session[fba].fbu && FB_JS.session[fba].access_token) {
+        // Get graph data for current user, then re-run doReplace.
+        FB_JS.graph({
+          path: 'me',
+          data: {
+            access_token : FB_JS.session[fba].access_token
+          },
+          success: function(gdata) {
+            FB_JS.session[fba].name = gdata.name
+            FB_JS.session[fba].fbu = gdata.id;
+            FB_JS.setCookie('fb_js_session', JSON.stringify(FB_JS.session));
+            FB_JS.doReplace(context);
+          }
+        });
+      }
+      else {
+        // Erase previous substitutions, if any.
+        jQuery('.fb_replace_processed', context).remove();
+
+        // TODO: we only handle the primary app here.  Should inspect markup for data-fba attribute.
+
+        // Substitute our tokens.
+        jQuery('.fb_replace', context).each(function(i, e) {
+          var markup = jQuery(this).html();
+          var replaced = markup.replace(/(![a-z]+)/g, function(s, key) {
+            return FB_JS.session[fba][key.slice(1)] || s;
+          });
+
+          // Because markup may be broken prior to replacement, it may be commented out with <!--- ... --->
+          replaced = replaced.replace(/<!---([^-])/g, '$1').replace(/([^-])--->/g, '$1');
+
+          // Append the replacement after the original.  Leave original in place in case of future replacements.
+          jQuery(this).after(jQuery(this).clone().removeClass('fb_replace').addClass('fb_replace_processed').html(replaced)).hide();
+        });
+        jQuery('.fb_replace_processed', context).show();
+      }
+    }
   }
 };
 
-if (typeof(window.fbAsyncInit) != 'undefined') {
-  // There should be only one definition of fbAsyncInit!
-  jQuery.event.trigger('fb_devel', {});
+
+FB_JS.graph = function(options_in) {
+  // Smart default access token only if not passed in.
+  var options = options_in;
+  if (Drupal.settings.fb.client_id && FB_JS.session[Drupal.settings.fb.client_id]) {
+    var default_token = FB_JS.session[Drupal.settings.fb.client_id].access_token;
+
+    // Insert access token, if it is not passed in to us.
+    options = jQuery.extend(true, {
+      data: {access_token: default_token}
+    }, options_in);
+  }
+
+  //@todo implement local cache, avoid multiple queries to 'me'
+
+  if (options.data && options.data.access_token == 'null') { // debug
+    // Trying to track this down.
+    debugger;
+    options.data.access_token = 0;
+  }
+
+  jQuery.ajax({
+    url: 'https://graph.facebook.com/' + options.path,
+    data: options.data,
+    type: options.type,
+    dataType: 'json',
+    success: function(gdata, textStatus, XMLHttpRequest) {
+      // TODO: parse response
+      options.success(gdata);
+    },
+    error: function(jqXHR, textStatus, errorThrown) {
+      // Unexpected error (i.e. ajax did not return json-encoded data).
+      var headers = jqXHR.getAllResponseHeaders(); // debug info.
+      var responseText = jqXHR.responseText; // debug info.
+      var edata = jQuery.parseJSON(responseText);
+
+      // Error callback.
+      if (options.error) {
+        options.error(edata);
+      }
+
+      // if edata.error.code == 190, token has expired and should be removed from session.  Possible page reload.
+      if (edata.error.code == 190) {
+        // invalid token handler will update session and notify drupal.
+        jQuery.event.trigger('fb_token_invalid', options.data);
+      }
+    }
+  });
 };
 
-window.fbAsyncInit = function() {
+FB_JS.fql = function(q, options0) {
+  var options = jQuery.extend(true, {
+    path: 'fql',
+    data: {q: q}
+  }, options0);
 
-  if (Drupal.settings.fb) {
-    FB.init(Drupal.settings.fb.fb_init_settings);
+  FB_JS.graph(options);
+};
+
+/**
+ * Helper for simplest type of batch graph operation.  An array of GET requests.
+ * Results are extracted into an array indexed by graph path.
+ */
+FB_JS.graphBatch = function(paths, options) {
+  var batch = [];
+  var i = 0;
+  for (var index in paths) {
+    batch[i++] = {method:'GET', relative_url:paths[index]};
   }
+  var data = options.data; // Typically only access token.
 
-  if (Drupal.settings.fb.fb_init_settings.authResponse) {
-    // Trust login status passed into us.  No getLoginStatus
-    FB_JS.fbAsyncInitFinal();
+  data.batch = JSON.stringify(batch);
 
-  }
-  else if (!Drupal.settings.fb.fb_init_settings ||
-           !Drupal.settings.fb.fb_init_settings.appId) {
-    // Once upon a time, we could test FB._apikey to learn whether FB was initialize with an appId.  Now, there is no way to do that.  So the test above uses the data we pass in.  Unfortunately if FB is not initialized by our code things may not work properly here.
-
-    // Cannot call getLoginStatus when not hosting an app.
-    FB_JS.fbAsyncInitFinal();
-  }
-  else {
-    FB_JS.getLoginStatus(function(response) {
-      if (Drupal.settings.fb.fbu && !response.authResponse) {
-        if (Drupal.settings.fb.page_type) {
-          // On canvas and tabs(?), this probably means third-party cookies not accepted.
-          jQuery.event.trigger('fb_devel', {}); // debug
-          FB_JS.reloadParams.fb_login_status = false;
+  // Use graph(), as it handles expired tokens and data parsing.
+  FB_JS.graph({
+    path: '',
+    data: data,
+    type: 'POST', // Always POST for batch.
+    success: function(gdata) {
+      // Parse encoded batch responses.
+      var results = [];
+      for (var index in gdata) {
+        if (gdata[index].code == 200) {
+          results[paths[index]] = jQuery.parseJSON(gdata[index].body);
         }
       }
-      FB_JS.fbAsyncInitFinal(response);
+      if (options.success) {
+        options.success(results, gdata);
+      }
+    },
+    error: function(edata) {
+      if (options.error) {
+        options.error(edata);
+      }
+    }
+  });
+};
+
+/**
+ * Returns ours settings specific to a particular app, by fba (a.k.a. client_id).
+ */
+FB_JS.getAppSettings = function(fba) {
+  var key = 'fb_app_' + fba; // Same as used in fb_init().
+  var settings = Drupal.settings[key];
+
+  // Access token should be 0 (never null), but this is here just in case.
+  if (settings.access_token == 'null') {
+    settings.access_token = 0;
+  }
+
+  // Ensure all expected values are present.
+  return jQuery.extend({
+    scope: '',
+    access_token: 0,
+  }, settings);
+}
+
+/**
+ * Send user to facebook's client auth dialog.  Useful as the onclick attribute of a link.
+ */
+FB_JS.clientAuth = function(fba, scope) {
+  if (!fba) {
+    fba = Drupal.settings.fb.client_id;
+  }
+  var settings = FB_JS.getAppSettings(fba);
+  scope = settings.scope.concat(scope);
+  if (fba && settings.client_auth_url) {
+    window.top.location = settings.client_auth_url + '&scope=' + scope.join(',');
+  }
+  return false;
+};
+
+
+// Helper to pass events via AJAX.
+// A list of javascript functions to be evaluated is returned.
+FB_JS.ajaxEvent = function(event_type, request_data) {
+
+  // Avoid nested calls.
+  if (typeof(FB_JS.semaphores[event_type]) != 'undefined' &&
+      FB_JS.semaphores[event_type]) {
+    // I believe it safe to skip this event.  Or, would it be better to pause and handle it later???
+    return;
+  }
+  else {
+    FB_JS.semaphores[event_type] = true;
+  }
+
+
+  if (Drupal.settings.fb.ajax_event_url) {
+
+    if (typeof(FB_SDK) != 'undefined' && FB_SDK.status == 'connected') {
+      // FB_SDK comes from fb_sdk.js.
+      request_data.signed_request = FB_SDK.authResponse.signedRequest;
+      request_data.status = FB_SDK.status;
+    }
+    if (typeof(FB) != 'undefined') {
+      // global FB comes from facebook JS SDK.
+      request_data.access_token = FB.getAccessToken();
+    }
+    //request_data.fbu = FB_JS.fbu; -- redundant, signed request contains this
+    request_data.client_id = Drupal.settings.fb.client_id;
+
+    //request_data.XDEBUG_SESSION_START=1; // debug
+
+    jQuery.ajax({
+      url: Drupal.settings.fb.ajax_event_url + '/' + event_type,
+      data : request_data,
+      type: 'POST',
+      dataType: 'json',
+      success: function(js_array, textStatus, XMLHttpRequest) {
+        if (js_array.length > 0) {
+          var progress = jQuery('<div class="fb-progress ajax-progress ajax-progress-throbber"><div class="throbber">&nbsp;</div></div>');
+          jQuery('.fb').after(progress);
+          for (var i = 0; i < js_array.length; i++) {
+            eval(js_array[i]);
+          }
+          jQuery('.fb-progress').remove();
+        }
+      },
+      error: function(jqXHR, textStatus, errorThrown) {
+        // Unexpected error (i.e. ajax did not return json-encoded data).
+        var headers = jqXHR.getAllResponseHeaders(); // debug info.
+        var responseText = jqXHR.responseText; // debug info.
+        debugger;
+        // @TODO: handle error, but how?
+      },
+      complete: function() {
+        FB_JS.semaphores[event_type] = false;
+      }
     });
   }
-}
+};
 
-FB_JS._fbAsyncInitFinalComplete = false; // semaphore
-FB_JS.fbAsyncInitFinal = function(response) {
 
-  if (FB_JS._fbAsyncInitFinalComplete && !response) {
-    return; // execute this function only once.
+//// jQuery pseudo-event handlers
+
+FB_JS.newTokenHandler = function(e, data) {
+  if (typeof(data) == 'undefined' || !data.app)
+    debugger;
+
+  var fba = data.app.id;
+  var fbu = data.me.id;
+  console.log(data);
+  FB_JS.session[fba] = {
+    access_token : data.access_token,
+    client_id : fba,
+    fbu: fbu
+  };
+
+  if (data.app) {
+    FB_JS.session[fba].fba = data.app.id;
+    FB_JS.session[fba].app_name = data.app.name;
   }
-  FB_JS._fbAsyncInitFinalComplete = true;
 
-  if (!response) {
-    response = FB.getAuthResponse();
-  }
+  var cookie_val = JSON.stringify(FB_JS.session);
+  FB_JS.setCookie('fb_js_session', cookie_val);
+  FB_JS.ajaxEvent('fb_new_token', FB_JS.session[fba]);
 
-  jQuery.event.trigger('fb_init');  // Trigger event for third-party modules.
+  // Sometimes new token adds permissions, in which case we should show those portions of the page that require permission.
+  // This is reached even when user skips an optional permission.  @todo: find a way to prevent that!
+  jQuery('.fb_has_permission').show();
+  jQuery('.fb_needs_permission').hide();
 
-  if (response) {
-    FB_JS.authResponseChange(response); // This will act only if fbu changed.
-  }
+  // Page elements may change depending on whether user is currently connected.
+  FB_JS.doGraphReplace();
+  FB_JS.doReplace();
+  FB_JS.doShowHide();
+};
 
-  FB_JS.eventSubscribe();  // Get notified when session changes
-
-  FB_JS.showConnectedMarkup(FB.getUserID()); // Show/hide markup based on connect status
-
-  if (typeof(FB.XFBML) != 'undefined') { // Soon to be deprecated?
-    try {
-      FB.XFBML.parse();
+FB_JS.tokenInvalidHandler = function(e, data) {
+  for (var key in FB_JS.session) {
+    if (FB_JS.session.hasOwnProperty(key)) {
+      var obj = FB_JS.session[key];
+      if (obj.access_token == data.access_token) {
+        delete FB_JS.session[key];
+        FB_JS.setCookie('fb_js_session', JSON.stringify(FB_JS.session));
+        FB_JS.doReplace();
+        FB_JS.doShowHide();
+      }
     }
-    catch (error) {
-      jQuery.event.trigger('fb_devel', error);
-    }
+  }
+  // Let Drupal know the token is bad.
+  if (data.access_token) {
+    FB_JS.ajaxEvent('token_invalid', {invalid_token: data.access_token});
   }
 };
 
-/**
- * Wrapper for FB.getLoginStatus().
- * Unlike the FB version, this function always calls its callback.
- */
-FB_JS.getLoginStatus = function(callback, force) {
-  var semaphore; // Avoid multiple calls to callback.
-  semaphore = false;
-
-  FB.getLoginStatus(function(response) {
-    semaphore = true;
-    callback(response);
-  }, force);
-
-  // Fallback for when getLoginStatus never calls us back.
-  setTimeout(function() {
-    if (!semaphore) {
-      callback({'authResponse' : null});
-    }
-  }, 3000); // 3000 = 3 seconds
-};
-
-/**
- * Tell facebook to notify us of events we may need to act on.
- */
-FB_JS.eventSubscribe = function() {
-  // Use FB.Event to detect Connect login/logout.
-  FB.Event.subscribe('auth.authResponseChange', FB_JS.authResponseChange);
-
-  // Q: what the heck is "edge.create"? A: the like button was clicked.
-  FB.Event.subscribe('edge.create', FB_JS.edgeCreate);
-}
+//// misc helper functions
 
 /**
  * Helper parses URL params.
  *
  * http://jquery-howto.blogspot.com/2009/09/get-url-parameters-values-with-jquery.html
  */
-FB_JS.getUrlVars = function(href) {
+FB_JS.parseVars = function(href) {
   var vars = [], hash;
   var hashes = href.slice(href.indexOf('?') + 1).split('&');
   for(var i = 0; i < hashes.length; i++)
   {
     hash = hashes[i].split('=');
     vars[hash[0]] = hash[1];
-    if (hash[0] != 'fbu')
-      vars.push(hashes[i]); // i.e. "foo=bar"
   }
   return vars;
-}
+};
+
+FB_JS.setCookie = function(key, value) {
+  // TODO make this smart enough to use different domain or path for canvas page, page tabs.
+  jQuery.cookie(key, value, {path: Drupal.settings.basePath});
+};
+
 
 /**
  * Reload the current page, whether on canvas page or facebook connect.
@@ -218,6 +549,13 @@ FB_JS.reload = function(destination) {
     destination = window.location.href;
   }
 
+  // Ignore hash when reloading
+  if (destination.indexOf('#') > 0) {
+    // Ignore #access_token=... portion of URL.
+    destination = destination.slice(0, destination.indexOf('#'));
+  }
+
+
   // Split and parse destination
   var path;
   if (destination.indexOf('?') == -1) {
@@ -225,12 +563,12 @@ FB_JS.reload = function(destination) {
     path = destination;
   }
   else {
-    vars = FB_JS.getUrlVars(destination);
+    vars = FB_JS.parseVars(destination);
     path = destination.substr(0, destination.indexOf('?'));
   }
 
   // Passing this helps us avoid infinite loop.
-  FB_JS.reloadParams.fb_reload = true;
+  FB_JS.reloadParams.fb_reloading = true;
 
   // Canvas pages will not get POST vars, so include them in the URL.
   if (Drupal.settings.fb.page_type == 'canvas') {
@@ -239,7 +577,8 @@ FB_JS.reload = function(destination) {
     }
   }
 
-  destination = vars.length ? (path + '?' + vars.join('&')) : path;
+  // Why does this not work???
+  destination = FB_JS.isEmpty(vars) ? path : (path + '?' + vars.join('&'));
 
   if (Drupal.settings.fb.reload_url_fragment) {
     destination = destination + "#" + Drupal.settings.fb.reload_url_fragment;
@@ -304,180 +643,16 @@ FB_JS.postToURL = function(path, params, method) {
   form.submit();
 }
 
-
-// Facebook pseudo-event handlers.
-FB_JS.authResponseChange = function(response) {
-  if (FB_JS.ignoreEvents) {
-    return;
-  }
-
-  if (response.authResponse && response.authResponse.signedRequest) {
-    // If we end up reloading page, pass signed request.
-    FB_JS.reloadParams.signed_request = response.authResponse.signedRequest;
-  }
-  else {
-    delete FB_JS.reloadParams.signed_request;
-  }
-
-  var status = {
-    'changed': false,
-    'fbu': FB.getUserID(),
-    'response' : response
-  };
-
-  if ((Drupal.settings.fb.fbu || status.fbu) &&
-      Drupal.settings.fb.fbu != status.fbu) {
-    // Drupal.settings.fb.fbu (from server) not the same as status.fbu (from javascript).
-    status.changed = true;
-  }
-
-  if (status.changed) {
-    // Remember the fbu.
-    Drupal.settings.fb.fbu = status.fbu;
-
-    // fbu has changed since server built the page.
-    jQuery.event.trigger('fb_session_change', status);
-
-    FB_JS.showConnectedMarkup(status.fbu);
-  }
-};
-
-// edgeCreate is handler for Like button.
-FB_JS.edgeCreate = function(href, widget) {
-  var data = {'href': href};
-  FB_JS.ajaxEvent('edge.create', data);
-};
-
-// JQuery pseudo-event handler.
-FB_JS.sessionChangeHandler = function(context, status) {
-  // Pass data to ajax event.
-  var data = {
-    'event_type': 'session_change',
-    'is_anonymous': Drupal.settings.fb.is_anonymous
-  };
-
-  data.fbu = status.fbu;
-
-  FB_JS.ajaxEvent(data.event_type, data);
-
-  // Note that ajaxEvent might reload the page.
-};
-
-
-// Helper to pass events via AJAX.
-// A list of javascript functions to be evaluated is returned.
-FB_JS.ajaxEvent = function(event_type, request_data) {
-  if (Drupal.settings.fb.ajax_event_url) {
-
-    if (typeof(Drupal.settings.fb_page_type) != 'undefined') {
-      request_data.fb_js_page_type = Drupal.settings.fb_page_type;
-    }
-
-    // Historically, we pass appId to ajax events.
-    // This data no longer present in JS API, so may be removed soon.
-    // In other words, deprecated!
-    request_data.appId = Drupal.settings.fb.fb_init_settings.appId;
-
-    // Other values to pass to ajax handler.
-    if (Drupal.settings.fb.controls) {
-      request_data.fb_controls = Drupal.settings.fb.controls;
-    }
-
-    // In case cookies are not accurate, always pass in signed request.
-    if (typeof(FB.getAuthResponse) != 'undefined') {
-      response = FB.getAuthResponse();
-      if (response && response.signedRequest) {
-        request_data.signed_request = response.signedRequest;
-      }
-    }
-    else {
-      session = FB.getSession();
-      if (session) {
-        //request_data.session = session;
-        request_data.access_token = session.access_token;
-      }
-    }
-
-
-    jQuery.ajax({
-      url: Drupal.settings.fb.ajax_event_url + '/' + event_type,
-      data : request_data,
-      type: 'POST',
-      dataType: 'json',
-      success: function(js_array, textStatus, XMLHttpRequest) {
-        if (js_array.length > 0) {
-          for (var i = 0; i < js_array.length; i++) {
-            // alert(js_array[i]);// debug
-            eval(js_array[i]);
-          }
-        }
-        else {
-          if (event_type == 'session_change') {
-            // No instructions from ajax.  Notify interested parties
-            jQuery.event.trigger('fb_session_change_done');
-          }
-        }
-      },
-      error: function(jqXHR, textStatus, errorThrown) {
-        // Unexpected error (i.e. ajax did not return json-encoded data).
-        var headers = jqXHR.getAllResponseHeaders(); // debug info.
-        var responseText = jqXHR.responseText; // debug info.
-        // @TODO: handle error, but how?
-        jQuery.event.trigger('fb_devel', jqXHR);
-      }
-    });
-  }
-};
-
-
-/**
- * Called when we first learn the currently logged in user's Facebook ID.
- *
- * Responsible for showing/hiding markup not intended for the current
- * user.  Some sites will choose to render pages with fb_connected and
- * fb_not_connected classes, rather than reload pages when user's
- * connect/disconnect.
- */
-FB_JS.showConnectedMarkup = function(fbu, context) {
-  if (context || fbu != FB_JS.fbu) {
-    if (fbu) {
-      FB_JS.fbu = fbu;
-      // Show markup intended only for connected users.
-      jQuery('.fb_not_connected', context).hide();
-      jQuery('.fb_connected', context).show();
-    }
-    else {
-      FB_JS.fbu = null;
-      // Show markup intended only for not connected users.
-      jQuery('.fb_connected', context).hide();
-      jQuery('.fb_not_connected', context).show();
-    }
-  }
-};
-
-/**
- * Tests whether FB.getLoginStatus() will work.
- * It tends to fail when user disables third-party cookies, and when apps are in sandbox mode, and probably more cases.
- * The danger of running this test is that if it fails, future calls to FB will break, because FB will forget the current user's credentials.
- */
-FB_JS.testGetLoginStatus = function(callback) {
-  // Attempt to learn whether third party cookies are enabled.
-  FB_JS.ignoreEvents = true; // disregard events triggered by getLoginStatus.
-  FB_JS.getLoginStatus(function(response) {
-    FB_JS.ignoreEvents = false; // we can pay attention again
-    if (!response.authResponse) {
-      // Let fb.module know that test failed.
-      FB_JS.reloadParams.fb_login_status = false;
-    }
-    callback(response.authResponse);
-  }, true);
-};
-
-
 // Quick test whether object contains anything.
 FB_JS.isEmpty = function(ob) {
   for(var i in ob){
     return false;
   }
   return true;
+}
+
+// Drupal should provide a helper like this.
+FB_JS.baseUrl = function() {
+  //return location.protocol + '//' + location.host + Drupal.settings.basePath;
+  return 'http:' + '//' + location.host + Drupal.settings.basePath;
 }

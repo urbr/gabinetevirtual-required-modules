@@ -2,714 +2,1336 @@
 
 /**
  * @file
- * This is the core required module of Drupal for Facebook.
- *
- * @see http://drupal.org/project/fb
- *
  */
 
-// hook_fb
-define('FB_HOOK', 'fb');
+//// Permissions
+define('FB_PERM_ADMINISTER', 'fb__administer');
+define('FB_PERM_ADMINISTER_TOKEN', 'fb__administer_token');
 
-// Paths.
-define('FB_PATH_ADMIN', 'admin/structure/fb');
-define('FB_PATH_ADMIN_ARGS', 3); // how many args in path.
-define('FB_PATH_ADMIN_APPS', 'admin/structure/fb/app');
-define('FB_PATH_ADMIN_APPS_ARGS', 4);
-define('FB_PATH_AJAX_EVENT', 'fb/ajax');
-define('FB_PATH_AJAX_EVENT_ARGS', 2);
-
-// permissions
-define('FB_PERM_ADMINISTER', 'administer fb apps');
-
-// Ops for hook_fb.
-define('FB_OP_GET_APP', 'get_app'); // Load data from a known app
-define('FB_OP_GET_ALL_APPS', 'get_all_apps'); // Load data about all apps
-
-define('FB_OP_CURRENT_APP', 'current_app'); // determine active app in canvas page or facebook connect
-define('FB_OP_INITIALIZE', 'init'); //
-define('FB_OP_POST_INIT', 'post init'); //
-
-define('FB_OP_EXIT', 'exit'); // End an FB callback. DEPRECATED
-define('FB_OP_GET_FBU', 'get_fbu'); // Query the local user's FB account
-define('FB_OP_GET_UID', 'get_uid'); // Query the facebook user's local account
-define('FB_OP_GET_USER_SESSION', 'get_user_sess');
-
-define('FB_OP_APP_IS_AUTHORIZED', 'app_authorized');  // Invoked if user has authorized an app. Triggers creation of user accounts or fb_user entries
-
-define('FB_OP_JS', 'fb_op_js');  // A chance to inject javascript onto the page.
-define('FB_OP_AJAX_EVENT', 'fb_op_ajax'); // Notification of an event via ajax.
-
-// Variables and $conf[] keys.
-define('FB_VAR_LANGUAGE_OVERRIDE', 'fb_language_override');
-define('FB_VAR_JS_SDK', 'fb_js_sdk');
-define('FB_VAR_API_FILE', 'fb_api_file');
-define('FB_VAR_JS_CHANNEL', 'fb_js_channel');
-define('FB_VAR_VERBOSE', 'fb_verbose');
-define('FB_VAR_APIKEY', 'fb_apikey'); // Deprecated.  Use FB_VAR_ID
-define('FB_VAR_ID', 'fb_id');
-define('FB_VAR_USE_COOKIE', 'fb_use_cookie');
-define('FB_VAR_USE_SESSION', 'fb_use_session');
-define('FB_VAR_JS_USE_SESSION', 'fb_js_session_token'); // Initialize JS with token from session.
-
-define('FB_VAR_JS_GET_LOGIN_STATUS', 'fb_js_get_login_status'); // call FB.getLoginStatus during js init?
-define('FB_VAR_JS_TEST_LOGIN_STATUS', 'fb_js_test_login_status');
-define('FB_VAR_JS_OAUTH', 'fb_js_oauth'); // Whether to pass oauth: true to FB.init().
-
-define('FB_VAR_CURL_NOVERIFY', 'fb_curl_noverify');
-define('FB_VAR_SECURE_URLS', 'fb_secure_urls');
+//// Variables
+define('FB_VAR_ADD_JS', 'fb__add_js');
+define('FB_VAR_DEFAULT_APP', 'fb__default_app');
+define('FB_VAR_ADMIN_ACCESS_TOKEN', 'fb__access_token');
+define('FB_VAR_PREFER_LONG_TOKEN', 'fb__prefer_long_token');
+define('FB_VAR_USE_CACHE', 'fb__use_cache');
 define('FB_VAR_ALTER_USERNAME', 'fb_format_username');
-define('FB_VAR_ALTER_USERNAME_AND_CACHE', 'fb_cache_username');
-
-// Possible choices for secure urls.
-define('FB_SECURE_URLS_ALWAYS', 1);
-define('FB_SECURE_URLS_SOMETIMES', 0);
-define('FB_SECURE_URLS_NEVER', -1);
 
 // Possible choices for formatting username.
 define('FB_ALTER_USERNAME_ALWAYS', 'always');
 define('FB_ALTER_USERNAME_NEVER', 'never');
-define('FB_ALTER_USERNAME_NOT_THEMING', 'when_not_theming');
 
-// Possible choices for caching the formated username
-define('FB_ALTER_USERNAME_AND_CACHE', 'on');
-define('FB_ALTER_USERNAME_DONT_CACHE', 'off');
+//// Token status
+define('FB_STATUS_FLAG_VALID', 1);
+define('FB_STATUS_FLAG_APP', 1 << 1); // App token
+define('FB_STATUS_FLAG_ADMIN', 1 << 2); // Token used for administration.
+define('FB_STATUS_FLAG_OFFLINE', 1 << 3); // Offline-access (deprecated)
 
-// node_access realms (belongs here?)
-define('FB_GRANT_REALM_FRIEND', 'fb_friend');
-define('FB_GRANT_REALM_GROUP', 'fb_group');
+define('FB_TOKEN_NONE', 0);
 
-// NOTE: on Connect Pages, using anything other than FB_FBU_CURRENT will cause cookies to be set which cause problems on subsequent pages. So only use something other than FB_FBU_CURRENT if you absolutely must!
-
-// @TODO - new libs, are these FBU values still needed???
-define('FB_FBU_CURRENT', 'fbu_current'); // Canvas pages and Connect pages
-define('FB_FBU_ANY', 'fbu_any'); // Use current user on canvas page, fall back to infinite session otherwise.
-
-//// Constants for internal use
-define('FB_APP_CURRENT', '000_app_current'); // Canvas pages only. 000 makes it appear first in options list
+//// Application status
+define('FB_STATUS_APP_ENABLED', 1);
+define('FB_STATUS_APP_LOCAL', 1 << 1); // App is associated with server's domain.
+define('FB_STATUS_APP_REMOTE', 1 << 2); // Supports remote protocol for tokens.
 
 
-/**
- * Controls are one way to customize the behavior of Drupal for Facebook modules.
- *
- * Controls are stored as an array of flags. Each flag overrides a
- * configurable or built-in behavior. Third-party modules can use this to
- * provide exceptions to otherwise useful behavior. For example see
- * fb_user.module, where this is used to suppress some behavior in off-line
- * mode.
- *
- * Controls take effect not just for the current page request, but also for
- * ajax callbacks generated by the subsequent page.
- *
- * Because ajax controls could be spoofed by a malicious client, flags should
- * not enable any "risky" features. For example, fb_user.module provides a
- * control to suppress the creation of account, but not a control to enable
- * new accounts, as that would be a security risk.
- *
- */
-function fb_controls($control = NULL, $value = NULL) {
-  $controls = &drupal_static(__FUNCTION__);
+//// Override default cache behavior
+define('FB_CACHE_NONE', 0);
+define('FB_CACHE_QUERY', 1);
+define('FB_CACHE_STORE', 1 << 1);
+define('FB_CACHE_QUERY_AND_STORE', FB_CACHE_QUERY | FB_CACHE_STORE);
 
-  if (!isset($controls)) {
-    // Initialize.
-    if (isset($_REQUEST['fb_controls'])) {
-      // Comma separated list passed to ajax calls.
-      foreach (explode(',', $_REQUEST['fb_controls']) as $key) {
-        $controls[$key] = TRUE;
-      }
-    }
-    else {
-      $controls = array();
-    }
-    // @TODO - would a drupal_alter() be useful here?
-  }
-  if (isset($control)) {
-    if ($value === FALSE) {
-      unset($controls[$control]);
-      return;
-    }
-    elseif ($value === TRUE)
-      $controls[$control] = TRUE;
+//// Menu paths
+// Note that if these paths change, the .info files have to change as well.
+define('FB_PATH_ADMIN_CONFIG', 'admin/config/fb');
+define('FB_PATH_ADMIN_ARGS', 3);
+define('FB_PATH_ADMIN_APPS', FB_PATH_ADMIN_CONFIG . '/application');
+define('FB_PATH_ADMIN_APPS_ARGS', FB_PATH_ADMIN_ARGS + 1);
+define('FB_PATH_AJAX_EVENT', 'fb/ajax');
+define('FB_PATH_AJAX_EVENT_ARGS', 2);
 
-    return isset($controls[$control]) ? $controls[$control] : FALSE; // Return requested control.
-  }
-  return array_keys($controls); // Return all controls.
-}
+//// Operations for hook_fb().
+define('FB_OP_TOKEN_USER', 'fb_token_user');
+define('FB_OP_AJAX', 'fb_ajax');
+define('FB_OP_TOKEN_INVALID', 'fb_token_invalid');
+define('FB_OP_POST_INIT', 'fb_post_init');
 
-/**
- * Implements hook_custom_theme().
- *
- * hook_custom_theme() is the new hook_init().  It is called before
- * hook_init(), and therefore the first opportunity that a module has to
- * act.  Although this module is not interested in setting a custom theme,
- * fb_canvas and fb_tab might, so we must initialize some data here.
- *
- * This function is also called before node_access hooks.  So the more we can
- * initialize here, the better.  That's why we initialize both $_fb_app and $_fb.
- *
- * @see fb_canvas_custom_theme().
- * @see fb_init().
- */
-function fb_custom_theme() {
-  // The code here is conceptually part of fb_init().
-
-  global $_fb_app;
-  global $_fb;
-
-  // fb_settings.inc may have been included in settings.php. If not, include it now.
-  if (!function_exists('fb_settings')) {
-    module_load_include('inc', 'fb', 'fb_settings');
-    // trigger test in fb_devel.module
-    $GLOBALS['fb_init_no_settings'] = TRUE;
-  }
-
-  // Figure out which app the current request is for.
-  $_fb_app = fb_invoke(FB_OP_CURRENT_APP);
-
-  if ($_fb_app) {
-    // Initialize the PHP API.
-    $_fb = fb_api_init($_fb_app);
-  }
-}
-
-/**
- * Implements hook_init().
- *
- * Initializes facebook's javascript.
- * Determines whether we are servicing a Facebook App request.
- *
- * We invoke our hook, first to determine which application is being invoked
- * (because we support more than one in the same Drupal instance). We invoke
- * the hook again to let interested modules know the sdk is initialized.
- *
- */
 function fb_init() {
-  // Globals provided for internal use and convenience to third-parties.
-  global $_fb;
-  global $_fb_app;
+  $fb_app = fb_get_app();
 
-  // When the site is in maintenance mode, hook_custom_theme won't be invoked so
-  // we call our implementation manually.
-  if (!function_exists('fb_settings')) {
-    fb_custom_theme();
+  if ($fb_app) {
+    $fba = $fb_app['client_id'];
+    $access_token = fb_user_token($fb_app);
+  }
+  else {
+    $fba = 0;
+    $access_token = null;
   }
 
   // Javascript settings needed by fb.js.
-  fb_js_settings('base_url', trim(url('', array('absolute' => TRUE)), '/'));
-  fb_js_settings('ajax_event_url', url(FB_PATH_AJAX_EVENT, array(
-                                         'absolute' => TRUE,
-                                       )));
-  fb_js_settings('is_anonymous', !user_is_logged_in());
+  drupal_add_js(array(
+                  'fb' => array(
+                    'client_id' => $fba, // Default app.
+                    'ajax_event_url' => url(FB_PATH_AJAX_EVENT, array('absolute' => TRUE)),
+                    'fb_reloading' => !empty($_REQUEST['fb_reloading']),
+                    'status' => $access_token ? 'connected' : 'unknown', // These strings match FB JS SDK authResponse.
+                  ),
+                ), 'setting');
+  drupal_add_library('system', 'jquery.cookie');
 
-  // Data structure to pass to FB.init();
-  $fb_init_settings = array(
-    'xfbml' => FALSE,
-    'status' => FALSE, // We will call getLoginStatus() instead.
-    'oauth' => variable_get(FB_VAR_JS_OAUTH, TRUE),
-  );
-
-  if (variable_get(FB_VAR_USE_COOKIE, TRUE)) {
-    $fb_init_settings['cookie'] = TRUE;
+  if ($fb_app) {
+    // App-specific details under app id, so that javascript can potentially work with more than one app at a time.
+    // Note that $fba must be prepended, as integers are unsafe to use as keys in drupal_add_js().  See drupal_array_merge_deep_array().
+    drupal_add_js(array(
+                    'fb_app_' . $fba => _fb_js_settings($fb_app),
+                  ), 'setting');
   }
 
-  if ($_fb_app) {
-    // An App is configured.
+  if (variable_get(FB_VAR_ADD_JS, FALSE)) {
+    // Use Facebook's Javascript SDK.
+    fb_require_js();
+  }
 
-    // Javascript settings needed by fb.js and/or other modules.
-    fb_js_settings('label', $_fb_app->label);
-    fb_js_settings('namespace', $_fb_app->canvas);
-    fb_js_settings('page_type', fb_settings(FB_SETTINGS_TYPE)); // canvas or connect.
+  // Let third parties know that fb.module is initialized.
+  fb_invoke(FB_OP_POST_INIT, array('fb_app' => $fb_app));
+}
 
-    // Add perms to settings, for calling FB.login().
-    $perms = array();
-    drupal_alter('fb_required_perms', $perms);
-    fb_js_settings('perms', implode(',', $perms));
-
-    //$fb_init_settings['apiKey'] = $_fb_app->apikey;
-    $fb_init_settings['appId'] = $_fb_app->id;
-
-    // Add perms to settings, for calling FB.login().
-    $perms = array();
-    drupal_alter('fb_required_perms', $perms);
-    fb_js_settings('perms', implode(',', $perms));
-
-    if ($_fb) {
-
-      // @TODO: test if this is still true: Sometimes when canvas page is open in one tab, and user logs out of
-      // facebook in another, the canvas page has bogus session info when
-      // refreshed.  Here we attempt to detect and cleanup.
-
-      // Give other modules a chance to initialize.
-      fb_invoke(FB_OP_INITIALIZE, array(
-                  'fb_app' => $_fb_app,
-                  'fb' => $_fb,
+function fb_require_js() {
+  drupal_add_js(drupal_get_path('module', 'fb') . '/fb_sdk.js', array(
+                  'type' => 'file',
+                  'scope' => 'header',
+                  'group' => JS_LIBRARY,
                 ));
-
-      // See if the facebook user id is known
-      if ($fbu = $_fb->getUser()) {
-        fb_invoke(FB_OP_APP_IS_AUTHORIZED, array(
-                    'fb_app' => $_fb_app,
-                    'fb' => $_fb,
-                    'fbu' => $fbu,
-                  ));
-        fb_js_settings('fbu', $fbu);
-
-      }
-
-      if (!empty($_REQUEST['fb_reload'])) {
-        // Tell javascript not to reload indefinately.
-        fb_js_settings('fb_reloading', $_REQUEST['fb_reload']);
-      }
-
-      // When not using cookies, or third-party cookies disabled, we can pass all the auth details in javascript settings.
-      if (variable_get(FB_VAR_JS_USE_SESSION, TRUE)) {
-        if (!empty($_REQUEST['fb_login_status'])) {
-          // Remember for duration of session whether test failed.
-          $_SESSION['fb_get_login_status_test'] = $_REQUEST['fb_login_status'];
-        }
-        if ($fb_uid = $_fb->getUser()) {
-
-          if (!empty($_SESSION['fb_get_login_status_test']) &&
-              $_SESSION['fb_get_login_status_test'] == 'false') {
-            $fb_token = $_fb->getAccessToken();
-            // This uses a data structure not documented by facebook.  May not continue to work.
-            $js_sr = array(
-              'accessToken' => $fb_token,
-              'userID' => $fb_uid,
-              // It's unclear exactly which parts of the sr are needed.
-              //'signedRequest' => $_SESSION['_fb_' . $_fb_app->id],
-              //'expiresIn' => 6988, // ???
-            );
-            $fb_init_settings['authResponse'] = (object) $js_sr;
-          }
-        }
-        else {
-          fb_js_settings('get_login_status_test', TRUE);
-        }
-      }
-
-    }
-    else {
-      unset($_fb_app);
-      watchdog('fb', "Could not initialize Facebook API.", array(), WATCHDOG_ERROR);
-    }
-
-    if (isset($_REQUEST['destination'])) {
-      $destination = $_REQUEST['destination'];
-    }
-    elseif (current_path()) {
-      $destination = current_path();
-    }
-    else {
-      $destination = '<front>';
-    }
-
-    if (fb_is_canvas()) {
-      $destination = fb_scrub_urls($destination); // Needed?
-    }
-
-    //Stripping the fragment out to be tacked on during the javascript redirect
-    if (strpos($destination, '#') !== FALSE) {
-      list($destination, $fragment) = explode('#', $destination, 2);
-      fb_js_settings('reload_url_fragment', $fragment);
-    }
-
-    fb_js_settings('reload_url', url($destination, array(
-                                       'absolute' => TRUE,
-                                       'fb_canvas' => fb_is_canvas(),
-                                       'language' => (object) array('prefix' => NULL, 'language' => NULL), // http://drupal.org/node/1000452
-                                     )));
-  }
-
-  if ($channel = variable_get(FB_VAR_JS_CHANNEL, TRUE)) {
-    if (!is_string($channel)) {
-      $channel = url('fb/channel', array('absolute' => TRUE, 'fb_url_alter' => FALSE));
-    }
-    $fb_init_settings['channelUrl'] = $channel;
-  }
-
-  fb_js_settings('fb_init_settings', $fb_init_settings);
-
-
-  // Allow third-parties to act, even if we did not initialize $_fb.
-  fb_invoke(FB_OP_POST_INIT, array('fb_app' => $_fb_app,
-                                   'fb' => $_fb));
-
-  fb_js_settings('test_login_status', variable_get(FB_VAR_JS_TEST_LOGIN_STATUS, TRUE));
-  fb_js_settings('get_login_status', variable_get(FB_VAR_JS_GET_LOGIN_STATUS, TRUE));
-
-  fb_js_settings('controls', implode(',', fb_controls()));
-
-  if (!fb_js_settings('js_sdk_url')) {
-    if (isset($_SESSION['fb_locale']) &&
-        variable_get(FB_VAR_LANGUAGE_OVERRIDE, 'override')) {
-      // @TODO - get locale from signed request.  It appears to contain it now.
-      $fb_lang = $_SESSION['fb_locale'];
-    }
-    else {
-      global $language;
-      $fb_lang = variable_get('fb_language_' . $language->language, 'en_US');
-    }
-
-    $js_sdk = fb_protocol() . "://connect.facebook.net/$fb_lang/all.js";
-    fb_js_settings('js_sdk_url', variable_get(FB_VAR_JS_SDK, $js_sdk));
-  }
-
-  // Add our module's javascript.
-  drupal_add_js(drupal_get_path('module', 'fb') . '/fb.js', array(
-    'type' => 'file',
-    'scope' => 'header',
-    'group' => JS_LIBRARY,
-  ));
-
-  // See also fb_page_alter(), where we initialize facebook's SDK.
 }
 
 /**
- * Implements hook_rdf_namespaces().
- * Adds the xmlns:fb attribute to html tag.
+ * Build the settings expected by fb.js.
  */
-function fb_rdf_namespaces() {
+function _fb_js_settings($fb_app) {
+  $access_token = fb_user_token($fb_app);
+  $settings = array(
+    'namespace' => $fb_app['namespace'],
+    'name' => $fb_app['name'],
+    'client_id' => $fb_app['client_id'],
+    'access_token' => $access_token,
+  );
+  // TODO: get extended perms.
+  $settings['scope'] = array();
+  $settings['client_auth_url'] = fb_client_auth_url($fb_app); // TODO: only if app supports this.
+  return $settings;
+}
+
+function _fb_oauth_state() {
+  // Is session name sufficent and safe for this?
+  return 'fb_' . session_name();
+}
+
+/**
+ * Implements hook_permission().
+ *
+ * Allow only the most privileged administrators to see the facebook tokens and application secrets.
+ */
+function fb_permission() {
   return array(
-    // It's unclear from facebook doc which of the URLs below is correct.
-    'fb' => 'http://www.facebook.com/2008/fbml',
-    //'fb' => 'http://ogp.me/ns/fb#',
+    FB_PERM_ADMINISTER => array(
+      'title' => t('Administer Facebook integration'),
+      'description' => t('Control how this site interacts with Facebook.com'),
+      'restrict access' => TRUE,
+    ),
+    FB_PERM_ADMINISTER_TOKEN => array(
+      'title' => t('Administer Facebook tokens and secrets'),
+      'description' => t('View and edit sensitive Facebook user information.'),
+      'restrict access' => TRUE,
+    ),
   );
 }
 
 /**
- * Helper to get the configured variables.
- *
- * Adds the javascript setting with the supplied key/value.  This function
- * merely keeps track of the settings and writes them as late as possible.
- * Currently, in the fb_footer() function.  There has been a lot of
- * experimentation as to the best place to initialize the facebook javascript
- * SDK.  The footer appears to be the best place because we may not know all
- * settings until well after hook_init().
- *
- * @param $key
- *   The javascript setting name. If the key is null then nothing is modified and the settings are returned.
- * @param $value
- *   The value of the javascript setting. If the key is not NULL by the value is the setting is removed
- * @return
- *    The associative array containing the current fb javascript settings
+ * Implements hook_menu().
  */
-function fb_js_settings($key = NULL, $value = NULL) {
-  $fb_js_settings = &drupal_static(__FUNCTION__);
+function fb_menu() {
+  $items = array();
 
-  if (isset($key) && isset($value)) {
-    $fb_js_settings[$key] = $value;
-    return $value;
-  }
-  elseif (isset($key)) {
-    return isset($fb_js_settings[$key]) ? $fb_js_settings[$key] : NULL;
-  }
-  else {
-    return $fb_js_settings;
-  }
-}
-
-
-/**
- * Include and initialize Facebook's PHP SDK.
- */
-function fb_api_init($fb_app) {
-  $cache = &drupal_static(__FUNCTION__);
-
-  if (isset($cache[$fb_app->id])) {
-    return $cache[$fb_app->id];
-  }
-
-  // Find Facebook's PHP SDK.  Use libraries API if enabled.
-  $fb_lib_path = function_exists('libraries_get_path') ? libraries_get_path('facebook-php-sdk') : 'sites/all/libraries/facebook-php-sdk';
-  $fb_platform = variable_get(FB_VAR_API_FILE, $fb_lib_path . '/src/facebook.php');
-
-  try {
-    if (!class_exists('Facebook') && !@include($fb_platform)) {
-      $message = t('Failed to find the Facebook client libraries at %filename.  Read the !readme and follow the instructions carefully.', array(
-                     '!drupal_for_facebook' => l(t('Drupal for Facebook'), 'http://drupal.org/project/fb'),
-                     // This link should work with clean URLs disabled.
-                     '!readme' => '<a href='. base_path() . '/' . drupal_get_path('module', 'fb') . '/README.txt>README.txt</a>',
-                     '%filename' => $fb_platform,
-                   ));
-      drupal_set_message($message, 'error');
-      watchdog('fb', $message);
-      return NULL;
-    }
-
-    if (Facebook::VERSION < "3") {
-      $message = 'This version of modules/fb is compatible with Facebook PHP SDK version 3.x.y, but %version was found (%fb_platform).';
-      $args = array('%fb_platform' => $fb_platform, '%version' => Facebook::VERSION);
-      if (user_access('access administration pages')) {
-        drupal_set_message(t($message, $args));
-      }
-      watchdog('fb', $message, $args, WATCHDOG_ERROR);
-      return NULL;
-    }
-
-    // Hack.  In case third-party cookies disabled, put signed request where facebook's SDK will find it.
-    if (variable_get(FB_VAR_USE_SESSION, TRUE) &&
-        !isset($_REQUEST['signed_request']) &&
-        !isset($_COOKIE['fbsr_' . $fb_app->id]) &&
-        isset($_SESSION['_fb_' . $fb_app->id])) {
-      $_REQUEST['signed_request'] = $_SESSION['_fb_' . $fb_app->id];
-    }
-
-    // We don't have a cached resource for this app, so we're going to create one.
-    $fb = new Facebook(array(
-                         'appId' => $fb_app->id,
-                         'secret' => isset($fb_app->secret) ? $fb_app->secret : NULL,
-                         'cookie' => variable_get(FB_VAR_USE_COOKIE, TRUE),
-                       ));
-
-    // Hack in case third-party cookies disabled, find access token in session.
-    // This comes into play when oauth is not used in JS.
-    if (variable_get(FB_VAR_USE_SESSION, TRUE) &&
-        !isset($_REQUEST['signed_request']) && isset($_SESSION['_fb_token_' . $fb_app->id])) {
-      $fb->setAccessToken($_SESSION['_fb_token_' . $fb_app->id]);
-    }
-
-    // Some servers need these settings.
-    if (variable_get(FB_VAR_CURL_NOVERIFY, TRUE)) {
-      Facebook::$CURL_OPTS[CURLOPT_SSL_VERIFYPEER] = FALSE;
-      Facebook::$CURL_OPTS[CURLOPT_SSL_VERIFYHOST] = FALSE;
-      //Facebook::$CURL_OPTS[CURLOPT_VERBOSE] = 1; // debug
-    }
-
-    // Cache the result, in case we're called again.
-    $cache[$fb_app->id] = $fb;
-
-    // Tell Drupal not to store the current page in the cache when user is logged into facebook.
-    if (!user_is_logged_in() && fb_facebook_user($fb)) {
-      //dpm("Disabling cache for connected user.", __FUNCTION__);
-      $GLOBALS['conf']['cache'] = 0; // CACHE_DISABLED == 0
-    }
-
-    return $fb;
-  }
-  catch (Exception $e) {
-    fb_log_exception($e, t('Failed to construct Facebook client API.'));
-  }
-}
-
-/**
- * Wrapper function for fb_api_init. This helps for functions that should
- * work whether or not we are on a canvas page. For canvas pages, the active
- * fb object is used. For non-canvas pages, it will initialize the API using
- * an infinite session, if configured.
- *
- * @param $fb_app Note this is ignored on canvas pages.
- *
- * This is for internal use. Third party modules use fb_api_init().
- */
-function _fb_api_init($fb_app = NULL) {
-  $fb = $GLOBALS['_fb']; // Default to active app on canvas pages
-  if (!$fb && $fb_app)
-    // Otherwise, log into facebook api.
-    $fb = fb_api_init($fb_app, FB_FBU_ANY);
-
-  if (!$fb) {
-    watchdog('fb', '%function unable to initialize Facebook API.',
-             array('%function' => '_fb_api_init()'), WATCHDOG_ERROR);
-    return;
-  }
-  else
-    return $fb;
-}
-
-
-/**
- * Helper function to get the most commonly used values.  In your custom
- * module, call extract(fb_vars()); to set $fb_app, $fb, and $fbu.
- */
-function fb_vars() {
-  // Access callback are called before hook_init, so make sure FB api initialized.
-  if ($GLOBALS['_fb_app'] && !$GLOBALS['_fb']) {
-    $GLOBALS['_fb'] = fb_api_init($GLOBALS['_fb_app']);
-  }
-
-  return array(
-    'fb' => $GLOBALS['_fb'],
-    'fb_app' => $GLOBALS['_fb_app'],
-    'fbu' => fb_facebook_user(),
+  $admin_item = array(
+    'access arguments' => array(FB_PERM_ADMINISTER),
+    'type' => MENU_NORMAL_ITEM,
+    'file' => 'fb.admin.inc',
+    'file path' => drupal_get_path('module', 'fb'),
   );
+
+  //// Administration
+  // Top level item copied from Drupal core modules.
+  $items[FB_PATH_ADMIN_CONFIG] = array(
+    'title' => 'Facebook',
+    'description' => 'Connectivity to facebook.com.',
+    //'position' => 'left',
+    //'weight' => -20,
+    'page callback' => 'system_admin_menu_block_page',
+    'access arguments' => array('access administration pages'),
+    'file' => 'system.admin.inc',
+    'file path' => drupal_get_path('module', 'system'),
+  );
+
+  $items[FB_PATH_ADMIN_CONFIG . '/settings'] = array(
+    'title' => 'Settings',
+    'weight' => -20,
+    'description' => 'Control how this site interacts with Facebook.com',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('fb_admin_settings_form'),
+  ) + $admin_item;
+
+  // Settings page has tabs.
+  $items[FB_PATH_ADMIN_CONFIG . '/settings/default'] = array(
+    'title' => 'Facebook Settings',
+    'type' => MENU_DEFAULT_LOCAL_TASK,
+    'weight' => -20,
+  ) + $admin_item;
+
+  $items[FB_PATH_ADMIN_CONFIG . '/settings/app'] = array(
+    'title' => 'Application',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('fb_admin_default_app_form'),
+    'type' => MENU_LOCAL_TASK,
+  ) + $admin_item;
+  $items[FB_PATH_ADMIN_CONFIG . '/settings/token'] = array(
+    'title' => 'Token',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('fb_admin_default_token_form'),
+    'type' => MENU_LOCAL_TASK,
+  ) + $admin_item;
+
+
+  // Page to administer all saved tokens.
+  $items[FB_PATH_ADMIN_CONFIG . '/token'] = array(
+    'title' => 'Access Tokens',
+    'weight' => 20,
+    'description' => 'Manage Facebook access tokens',
+    'page callback' => 'fb_admin_token_page',
+    'access arguments' => array(FB_PERM_ADMINISTER_TOKEN),
+  ) + $admin_item;
+
+  // Replace an expired token.
+  $items[FB_PATH_ADMIN_CONFIG . '/token_replace'] = array(
+    'title' => 'Replace Token',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('fb_admin_token_replace_form'),
+    'type' => MENU_CALLBACK,
+  ) + $admin_item;
+
+  // Administer all apps
+  $items[FB_PATH_ADMIN_APPS] = array(
+    'title' => 'Applications',
+    'description' => 'Manage Facebook Apps.',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('fb_admin_applications_form'),
+  ) + $admin_item;
+  // Apps page has tabs.
+  $items[FB_PATH_ADMIN_APPS . '/default'] = array(
+    'title' => 'Applications',
+    'type' => MENU_DEFAULT_LOCAL_TASK,
+    'weight' => -20,
+  ) + $admin_item;
+
+  $items[FB_PATH_ADMIN_APPS . '/add'] = array(
+    'title' => 'Add Application',
+    //'description' => 'Host an application on this server.',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('fb_admin_application_edit_form'),
+    'type' => MENU_LOCAL_TASK,
+    'weight' => 20,
+  ) + $admin_item;
+
+
+
+  // Admin pages for each app.
+  $items[FB_PATH_ADMIN_APPS . '/%fb'] = array(
+    'title' => 'Application Detail',
+    'description' => 'Facebook Applications',
+    'page callback' => 'fb_admin_app_page',
+    'page arguments' => array(FB_PATH_ADMIN_APPS_ARGS),
+    'access arguments' => array(FB_PERM_ADMINISTER),
+    'file' => 'fb.admin.inc',
+    'type' => MENU_CALLBACK,
+  );
+
+  $items[FB_PATH_ADMIN_APPS . '/%fb/view'] = array(
+    'title' => 'View',
+    'weight' => -2,
+    'type' => MENU_DEFAULT_LOCAL_TASK,
+  );
+
+  $items[FB_PATH_ADMIN_APPS . '/%fb/edit'] = array(
+    'title' => 'Edit',
+    'description' => 'Edit Facebook Application',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('fb_admin_application_edit_form', FB_PATH_ADMIN_APPS_ARGS),
+    'access arguments' => array(FB_PERM_ADMINISTER),
+    'file' => 'fb.admin.inc',
+    'weight' => -1,
+    'type' => MENU_LOCAL_TASK,
+  );
+
+  $items[FB_PATH_ADMIN_APPS . '/%fb/delete'] = array(
+    'title' => 'Delete',
+    'description' => 'Delete Facebook Application',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('fb_admin_application_delete_form', FB_PATH_ADMIN_APPS_ARGS),
+    'access arguments' => array(FB_PERM_ADMINISTER),
+    'file' => 'fb.admin.inc',
+    'weight' => -1,
+    'type' => MENU_NORMAL_ITEM,
+  );
+
+  // Allow a user to get a token.
+  //XXXX
+  $items['fb/token'] = array(
+    'title' => 'Fb Token',
+    'page callback' => 'fb_page_token',
+    'access callback' => TRUE,
+    'type' => MENU_CALLBACK,
+  );
+
+  // Javascript event handler.
+  $items[FB_PATH_AJAX_EVENT . '/%'] = array(
+    'page callback' => 'fb_ajax_event',
+    'type' => MENU_CALLBACK,
+    'access callback' => TRUE,
+    'page arguments' => array(FB_PATH_AJAX_EVENT_ARGS),
+  );
+
+
+  return $items;
 }
 
 /**
- * Helper function to work with facebook "open" graph.
+ * Implementation of a %wildcard_load(). http://drupal.org/node/224170
+ *
+ * Handles menu items with %fb in the path by querying facebook graph for data.
+ *
+ * @param $id
+ * Path on the facebook graph.  Usually the ID of a graph object.
+ *
+ * @param $params
+ * Optional array of parameter to pass to fb_graph().  Can be used to specify an access_token.
  */
-function fb_graph($path, $params = array(), $method = 'GET', $fb = NULL) {
-  if (!$fb) {
-    $fb = $GLOBALS['_fb'];
+function fb_load($id, $params = array()) {
+  if (!$id) {
+    return array();
   }
-  if ($method == 'GET') {
-    $url = url("https://graph.facebook.com/$path", array(
-                 'query' => $params,
-               ));
-    $http = drupal_http_request($url);
-  }
-  else {
-    $url = "https://graph.facebook.com/$path";
-    $headers = array();
-    //$headers = array('Content-Type' => 'application/x-www-form-urlencoded'); // Needed??
-    $query = http_build_query($params, '', '&');
-    $http = drupal_http_request($url, array(
-                                  'headers' => $headers,
-                                  'method' => $method,
-                                  'data' => $query,
-                                ));
-  }
-
-  if (isset($http->data)) {
-    $data = json_decode($http->data, TRUE);
-  }
-  else {
-    $data = array(); // avoid php warnings.
-  }
-
-  if (!isset($http->error) && !empty($data)) {
-    if (is_array($data)) {
-      if (isset($data['error_code'])) {
-        throw new FacebookApiException($data);
-      }
-    }
-    elseif ($http->data == 'true' || $http->code == 200) {
-      // No problems.
-    }
-    else {
-      // Never reach this???
-      if (function_exists('dpm')) dpm($http, __FUNCTION__ . " unexpected result from $url"); // XXX
-    }
-    return $data;
-  }
-  elseif (!empty($data)) {
-    // Error has a message.
-    // TODO: parse error code from message.
-    $message = t('fb_graph failed querying !path.  !type: !detail', array(
-                   '!path' => $path,
-                   '!type' => $data['error']['type'],
-                   '!detail' => $data['error']['message'],
-                 ));
-    throw new Exception($message); // Do we need our own code???
-  }
-  else {
-    $data = json_decode($http->data, TRUE);
-
-    $message = t('fb_graph failed querying !path.  !detail', array(
-                   '!path' => $path,
-                   '!detail' => $http->error,
-                 ));
-    throw new Exception($message); // Do we need our own code???
-  }
-}
-
-
-/**
- * Helper to get the tokens needed to accss facebook's API.
- *
- * You would think that facebook's SDK would provide basic functions like this.
- *
- * @param $fb
- * Get the token for this API instance.  If NULL, use the global $_fb.
- *
- * @param $fbu
- * Get the user-specific token.  If NULL, get the application token.
- */
-function fb_get_token($fb = NULL, $fbu = NULL) {
   $cache = &drupal_static(__FUNCTION__);
+  $token = &drupal_static('fb_load_token');
+
   if (!isset($cache))
     $cache = array();
+  if (!isset($cache[$id])) {
+    try {
+      drupal_alter('fb_load', $token, $params, $id); // Allow third parties to change settings.
 
-  if (!$fb) {
-    $fb = $GLOBALS['_fb'];
+      // Query facebook for data.
+      $cache[$id] = fb_graph($id, $params + array('access_token' => $token));
+    }
+    catch (exception $e) {
+      fb_log_exception($e, t('Failed to query facebook for url argument %id', array('%id' => $id)));
+      $cache[$id] = array('id' => $id);
+    }
   }
-  if (!$fb) {
+  return $cache[$id];
+}
+
+/**
+ * Drupal menu loader callback.  Also a helper function to load locally stored information about a facebook application.
+ *
+ * May return sensitive data including access tokens and application secrets.  So handle the results with extreme caution!
+ *
+ */
+function fb_application_load($app_id) {
+  // For convenience, allow the app_id to be either a namespace or a graph id.
+  foreach (array('namespace', 'fba') as $id_field) {
+    $fb_app = db_select('fb_application', 'fba')
+      ->fields('fba')
+      ->condition($id_field, $app_id, '=')
+      ->execute()
+      ->fetchAssoc();
+    if (!empty($fb_app)) {
+      break;
+    }
+  }
+
+  // @todo Until code is cleaned up to use either 'fba' or 'client_id' consistently, allow both.
+  $fb_app['client_id'] = $fb_app['fba'];
+
+  // @todo Fix descrepency between name and title.
+  if (!isset($fb_app['name'])) {
+    $fb_app['name'] = $fb_app['title'];
+  }
+
+  if (!empty($fb_app['sdata']) && empty($fb_app['data'])) {
+    $fb_app['data'] = unserialize($fb_app['sdata']);
+  }
+
+  return $fb_app;
+}
+
+function fb_token_load($fbu, $fba = NULL) {
+  if (!$fba) {
+    $fb_app = fb_get_app();
+    $fba = $fb_app['client_id'];
+  }
+  // Using db_query because I could not make db_select work with bigint fields.
+  $result = db_query("SELECT * FROM {fb_token} WHERE fbu=:fbu AND fba=:fba", array(
+                       ':fbu' => $fbu,
+                       ':fba' => $fba,
+                     ));
+  $fb_token = $result->fetchAssoc();
+
+  /*
+  $select = db_select('fb_token', 'fbt')
+    ->condition('fbu', (int) $fbu, '=');
+  if ($fba) {
+    $select->condition('fba', (int) $fba, '=');
+  }
+  $fb_token = $select->execute()->fetchAssoc();
+  */
+  return $fb_token;
+}
+
+function fb_debug_token($token, $fb_app = array()) {
+  if (empty($token)) {
+    return;
+  }
+  if (empty($fb_app)) {
+    $data = fb_graph('app', $token);
+    $fb_app = fb_application_load($data['id']);
+  }
+
+  $app_token = fb_token_load($fb_app['client_id']);
+
+  $graph = fb_graph('debug_token', array(
+                      'input_token' => $token,
+                      'access_token' => $app_token['access_token'],
+                    ));
+  return $graph['data'];
+}
+
+/**
+ * hook_username_alter().
+ *
+ * Return a user's facebook name, instead of local username.  Drupal
+ * invokes this hook A LOT!  So caching is important.
+ *
+ * This function can be called very early in the bootstrap process, before
+ * the modules are initialized, in which case we will fail to alter the
+ * name.
+ */
+function fb_username_alter(&$name, $account) {
+  $enabled = variable_get(FB_VAR_ALTER_USERNAME, FB_ALTER_USERNAME_ALWAYS);
+  if ($enabled == FB_ALTER_USERNAME_NEVER) {
+    // Altering disabled.
     return;
   }
 
-  $app_id = $fb->getAppId();
-  $cache_key = "fb_token_$app_id";
+  // Skip on admin pages.
+  if (arg(0) == 'admin') {
+    return;
+  }
 
-  // @TODO if both fb and fbu are NULL, it might be better performance to use the current user's token, if available.
-
-  if (!$fbu) {
-    // Get the application token.
-    if (empty($cache[$cache_key])) {
-      // try Drupal cache
-      $cache_obj = cache_get($cache_key);
-      if ($cache_obj && $cache_obj->data) {
-        $cache[$cache_key] = $cache_obj->data;
-      }
+  // First we try the static cache.
+  $names_cache = &drupal_static(__FUNCTION__);
+  if (isset($names_cache[$account->uid])) {
+    if (!empty($names_cache[$account->uid])) {
+      $name = $names_cache[$account->uid];
     }
-    if (empty($cache[$cache_key])) {
-      // Query facebook for token.
-      // http://developers.facebook.com/docs/authentication/applications/
-      $path = "https://graph.facebook.com/oauth/access_token?client_id=" . $app_id . "&client_secret=" . $fb->getApiSecret() . "&grant_type=client_credentials";
-      $http = drupal_http_request($path);
-      if ($http->code == 200 && isset($http->data)) {
-        $data = explode('=', $http->data);
-        $token = $data[1];
-        if ($token) {
-          $cache[$cache_key] = $token;
-          $result = cache_set($cache_key, $token, 'cache', CACHE_TEMPORARY);
+    return;
+  }
+
+  if ($pos = strpos($name, '@facebook')) {
+    // Only alter unique names created by fb_user.module.
+    if ($fbu = substr($name, 0, $pos)) {
+
+      // Querying names from facebook is expensive, so try local cache first.
+      $cache_key = 'fb_username_' . $fbu;
+      $cache = cache_get($cache_key);
+      if ($cache && $cache->data) {
+        $names_cache[$account->uid] = $cache->data;
+      }
+      else {
+        // Nothing cached so we have to query facebook.com.
+        try {
+          $data = fb_graph($fbu); // TODO token
+          $names_cache[$account->uid] = $data['name'];
+          if ($names_cache[$account->uid]) {
+            //cache_set($cache_key, $names_cache[$account->uid]);
+          }
+        }
+        catch (Exception $e) {
+          fb_log_exception($e, t('Failed to alter username for facebook user %fbu', array(
+                                   '%fbu' => $fbu)));
+          $names_cache[$account->uid] = FALSE;
         }
       }
-      if (!$token) {
-        watchdog('fb', 'Failed to get application (%app_id) access token.', array('%app_id' => $app_id), WATCHDOG_ERROR);
+
+      if (!empty($names_cache[$account->uid])) {
+        $name = $names_cache[$account->uid];
       }
     }
   }
   else {
-    $cache_key .= '_' . $fbu;
-    // Get the user access token.
-    if ($fbu == 'me' || $fbu == fb_facebook_user($fb)) {
-      $cache[$cache_key] = $fb->getAccessToken();
-    }
-    else {
-      $session_data = fb_invoke(FB_OP_GET_USER_SESSION, array(
-                                  'fb' => $fb,
-                                  'fb_app' => fb_get_app(array('id' => $app_id)),
-                                  'fbu' => $fbu,
-                                ), array());
-      if (count($session_data)) {
-        $cache[$cache_key] = $session_data['access_token'];
-      }
-    }
+    $names_cache[$account->uid] = FALSE;
   }
-  return isset($cache[$cache_key]) ? $cache[$cache_key] : NULL;
+}
+
+
+/**
+ * Implements hook_theme().
+ */
+function fb_theme() {
+  return array(
+    // fb_markup renders connected_markup to connected users, otherwise not_connected_markup.
+    'fb_markup' => array(
+      'arguments' => array(
+        'not_connected_markup' => NULL,
+        'connected_markup' => '<fb:profile-pic linked=false uid=loggedinuser></fb:profile-pic>',
+        'options' => NULL,
+      ),
+      'file' => 'fb.theme.inc',
+    ),
+
+    // fb_login_button renders login link. Default does not use fb:login-button.
+    'fb_login_button' => array(
+      'arguments' => array(
+        'text' => 'Connect with Facebook',
+        'onclick' => NULL,
+        'scope' => NULL,
+        'options' => NULL,
+      ),
+      'file' => 'fb.theme.inc',
+    ),
+    /* needed???
+    'fb_admin_token_generate' => array(
+      'arguments' => array('element'),
+      'file' => 'fb.admin.inc',
+    ),
+    */
+  );
+
 }
 
 /**
- * This helper original written because facebook's $fb->api() function was
- * very buggy.  I'm not sure this is still needed.  On the other hand, a
- * future version of modules/fb might use this instead of faceobok's PHP SDK,
- * eliminating the need for it entirely.
+ * Implements hook_preprocess_username().
+ *
+ * Add attributes allowing fb.js to learn the username from facebook.
+ * Replaces machine names like 12345@facebook with real names.
  */
-function fb_call_method($fb, $method, $params = array()) {
-  if (!isset($params['access_token'])) {
-    $params['access_token'] = fb_get_token($fb);
+function fb_preprocess_username(&$variables) {
+  if ($pos = strpos($variables['name'], '@facebook')) {
+    $fbu = substr($variables['name'], 0, $pos);
+    if ($fbu) {
+      // Attributes that fb.js can use to display human-readable names.
+      $variables['link_options']['#attributes']['data-fbu'] = $fbu;
+      $variables['attributes_array']['data-fbu'] = $fbu;
+    }
   }
-  $params['format'] = 'json-strings';
+}
 
-  // Here's how to create a url that conforms to standards:
+/**
+ * Implements hook_preprocess_user_picture().
+ *
+ * Use a facebook profile picture if facebook ID known, and no local picture.
+ */
+function fb_preprocess_user_picture(&$variables) {
+  // Note $variables['user_picture'] will contain the site-wide default even if user has not uploaded a picture.
+  if ((empty($variables['user_picture']) || empty($variables['user']->picture)) &&
+      !empty($variables['account']->name) && $pos = strpos($variables['account']->name, '@facebook')) {
+    $fbu = substr($variables['account']->name, 0, $pos);
+    if ($fbu) {
+      $variables['user_picture'] = theme('image', array('path' => '//graph.facebook.com/' . $fbu . '/picture'));
+    }
+  }
+}
+
+/**
+ * Implements hook_element_info().
+ */
+function fb_element_info() {
+  return array(
+    // Admin form element to generate a new token.
+    'fb_admin_token_generate' => array(
+      '#input' => TRUE,
+      '#process' => array('fb_admin_token_generate_process'),
+
+      '#element_validate' => array('fb_admin_token_generate_validate'),
+
+      // Undocumented but vital, thanks drupal.org!
+      '#theme_wrappers' => array('form_element'),
+      '#base_type' => 'fieldset',
+
+    ),
+
+    // Admin form element to select a previously saved token.
+    'fb_admin_token_select' => array(
+      '#input' => TRUE,
+      '#process' => array('fb_admin_token_select_process'),
+
+      '#element_validate' => array('fb_admin_token_select_validate'),
+
+      '#theme_wrappers' => array('form_element'),
+      '#base_type' => 'fieldset',
+    ),
+  );
+}
+
+
+//// misc helper functions.
+
+/**
+ * For debugging, add $conf['fb_verbose'] = TRUE; to settings.php.
+ */
+function fb_verbose() {
+  return variable_get('fb_verbose', NULL);
+}
+
+
+/**
+ * Gets details about a previously configured Facebook application.
+ *
+ * Typically used to get the current app.  In the simple case (i.e. a
+ * website with just one app devoted to Facebook Connect) returns the
+ * "default" app.  In more complex cases (i.e. Drupal hosts multiple
+ * canvas page apps) this function allows other modules to select the app,
+ * via hook_fb_app_alter().
+ */
+function fb_get_app($variable = NULL) {
+  if ($variable) {
+    $app = variable_get($variable, array());
+  }
+  else {
+    $app = variable_get(FB_VAR_DEFAULT_APP, array());
+  }
+
+  // Allow other modules to change result.
+  drupal_alter('fb_app', $app, $variable);
+
+  if (empty($app)) {
+    return FALSE;
+  }
+
+  // Defaults to avoid PHP errors.
+  $app += array(
+    'fba' => NULL,
+    'client_id' => NULL,
+    'namespace' => NULL,
+    'name' => NULL,
+  );
+
+  // For historical reasons, we use 'fba' for the app id.  Facebook has
+  // started using 'client_id'. @todo cleanup all code to use just one or
+  // the other.
+  if (!empty($app['client_id'])) {
+    $app['fba'] = $app['client_id'];
+  }
+  if (empty($app['client_id'])) {
+    $app['client_id'] = $app['fba'];
+  }
+
+  // Debug sanity check!
+  if (!is_array($app)) {
+    return array();
+  }
+  return $app;
+}
+
+
+// TODO: remove these functions, save app ids on install.
+//// Default remote hosted applications.
+function fb_app_defaults() {
+  return array(
+    'client_id' => '138744759520314',
+    'base_url' => 'http://apps.facebook.com/the-fridge',
+    'name' => 'Default App',
+  );
+}
+function fb_app_devel_defaults() {
+  return array(
+    'client_id' => '102712003139606',
+    'base_url' => 'http://apps.facebook.com/the-fridge-beta',
+    'name' => 'Default App (Devel)',
+  );
+}
+
+
+/**
+ * The access token allows the Fb app to publish and read posts.
+ *
+ */
+function fb_access_token() {
+  static $token;
+
+  if (!isset($token)) {
+    // Prefer the user-specific token.
+    $token = fb_user_token();
+    if (!$token) {
+      $token = fb_get_admin_token();
+    }
+  }
+  return $token;
+}
+
+/**
+ * This returns a site-wide token.  If a specific variable is requested, but not set, the default token will be returned.
+ */
+function fb_get_admin_token($variable = FB_VAR_ADMIN_ACCESS_TOKEN) {
+  $token = variable_get($variable, NULL);
+  if ($token === NULL) {
+    $token = variable_get(FB_VAR_ADMIN_ACCESS_TOKEN, NULL);
+  }
+  return $token;
+}
+
+/**
+ * When a token is known to have expired, this function flags it no longer valid.  It will no longer be a choice in admin forms.
+ *
+ * Care must be taken before calling this.  A facebook graph request could fail for other reasons (i.e. a timeout or https://developers.facebook.com/bugs/285682524881107/).  Should be called only when certain that a token is not valid.
+ */
+function fb_token_invalid($token) {
+  db_query("UPDATE {fb_token} SET status = status &~ :valid_flag WHERE access_token=:token", array(
+             ':valid_flag' => FB_STATUS_FLAG_VALID,
+             ':token' => $token,
+           ));
+
+  if (!empty($_SESSION['fb']) && !empty($_SESSION['fb'][$token])) {
+    unset($_SESSION['fb'][$token]);
+  }
+
+  if (!empty($_SESSION['fb'])) {
+    foreach ($_SESSION['fb'] as $fba => $app) {
+      if (!empty($app['access_token']) &&
+          $app['access_token'] == $token) {
+        unset($_SESSION['fb'][$fba]);
+      }
+    }
+  }
+
+  if (empty($_SESSION['fb'])) {
+    unset($_SESSION['fb']);
+  }
+
+  // Let fb.js know this token is bad.
+  drupal_add_js(array('fb' => array(
+                        'token_invalid' => $token,
+                      ),
+                ), 'setting');
+
+  // Let other modules know this token is bad.
+  fb_invoke(FB_OP_TOKEN_INVALID, array('invalid_token' => $token));
+}
+
+/**
+ * Save a token to the fb_token table.
+ */
+function fb_token_save($token, $params = array()) {
+  // Defaults.
+  $params = $params + array(
+    'status' => FB_STATUS_FLAG_VALID,
+    'access_token' => $token,
+    'changed' => REQUEST_TIME,
+    'data' => NULL,
+  );
+  if (empty($params['fbu']) || empty($params['fba'])) {
+    if (empty($params['graph'])) {
+      $params['graph'] = fb_graph_batch(array('me', 'app'), $params['access_token'], FB_CACHE_STORE);
+    }
+    $params['fbu'] = $params['graph']['me']['id'];
+    $params['fba'] = $params['graph']['app']['id'];
+  }
+
+  $result = db_merge('fb_token')
+    ->key(array('fba' => $params['fba'], 'fbu' => $params['fbu']))
+    ->fields(array(
+               'access_token' => $params['access_token'],
+               'status' => $params['status'],
+               'changed' => $params['changed'],
+               'data' => $params['data'] ? serialize($params['data']) : NULL,
+             ))
+    ->execute();
+
+  if ($result) {
+    return $params;
+  }
+}
+
+/**
+ * The user-specific token allows individual users to post to their own feeds.
+ */
+function fb_user_token($app = NULL, $token = NULL) {
+  static $cache = NULL;
+  if (!$app) {
+    $app = fb_get_app();
+  }
+  if (is_array($app) && !empty($app['client_id'])) {
+    $client_id = $app['client_id'];
+  }
+  else {
+    $client_id = $app;
+  }
+
+  if (!$client_id) {
+    return FB_TOKEN_NONE;
+  }
+
+  // Set value.
+  if ($token) {
+    if ($token == 'null') {
+      // @todo how does string "null" get here???
+      $token = FB_TOKEN_NONE;
+    }
+    $cache[$client_id] = $token;
+
+    if (empty($_SESSION['fb'][$client_id]) || $_SESSION['fb'][$client_id]['access_token'] != $token) {
+      // Notify third-party modules of newly connected user.
+      fb_invoke(FB_OP_TOKEN_USER, array('client_id' => $client_id, 'access_token' => $token));
+    }
+
+    $_SESSION['fb'][$client_id]['access_token'] = $token;
+  }
+
+  // Return value.
+  if ($token === NULL && isset($_REQUEST['access_token'])) {
+    // Token passed to us, usually via ajax event.
+    return fb_user_token($client_id, $_REQUEST['access_token']);
+  }
+  elseif ($token === NULL && isset($_REQUEST['code']) && $new_token = fb_auth_get_token($app)) {
+    // Token provided via server auth URL. (This needs testing.)
+    return fb_user_token($client_id, $new_token);
+  }
+  elseif (!empty($cache) && !empty($cache[$client_id])) {
+    if ($cache[$client_id] == 'null') {
+      // @todo why does this happen?
+      $cache[$client_id] = FB_TOKEN_NONE;
+    }
+    return $cache[$client_id];
+  }
+  elseif ($token === NULL &&
+          !empty($_SESSION['fb']) &&
+          !empty($_SESSION['fb'][$client_id]) &&
+          !empty($_SESSION['fb'][$client_id]['access_token'])) {
+    return fb_user_token($client_id, $_SESSION['fb'][$client_id]['access_token']);
+  }
+  return FB_TOKEN_NONE;
+}
+
+/**
+ * Build a URL where a user can be sent to authorize a facebook app and afterwards get an access_token.  Uses facebook's server-side auth mechanism.
+ *
+ */
+function fb_server_auth_url($options = array()) {
+  if (empty($options['fba'])) {
+    $options = fb_get_app();
+  }
+  // defaults
+  $options += array(
+    'redirect_uri' => fb_auth_redirect_uri(current_path(), array('query' => array('client_id' => $options['fba']))),
+    'scope' => '',
+  );
+
+  // http://developers.facebook.com/docs/authentication/server-side/
+  $url = url('https://www.facebook.com/dialog/oauth', array(
+               'query' => array(
+                 'client_id' => $options['fba'],
+                 'redirect_uri' => $options['redirect_uri'],
+                 'scope' => $options['scope'],
+                 'state' => _fb_oauth_state($options['fba']),
+               ),
+             ));
+  return $url;
+}
+
+/**
+ * Produce a client side auth URL as described in
+ * https://developers.facebook.com/docs/authentication/client-side/
+ */
+function fb_client_auth_url($options = array()) {
+  // TODO: clean up the fba vs client_id confusion.
+  if (!empty($options['client_id'])) {
+    $options['fba'] = $options['client_id'];
+  }
+
+  // defaults
+  if (empty($options['fba'])) {
+    $options = fb_get_app();
+  }
+  if (empty($options['fba'])) {
+    // No application configured.  Any link we try to generate will result in error on facebook.com.
+    return NULL;
+  }
+
+  // Calculate a redirect uri which will be part of our URL.
+  $options += array(
+    'redirect_uri' => fb_auth_redirect_uri(current_path(), array('query' => array('client_id' => $options['fba']))),
+    'scope' => '',
+  );
+
+  // debug
+  //$options['redirect_uri'] = 'http://work.electricgroups.com/dave/fridge/htdocs/fb/devel';
+
+  // http://developers.facebook.com/docs/authentication/server-side/
+  $query = array(
+    'client_id' => $options['fba'],
+    'redirect_uri' => $options['redirect_uri'],
+    'response_type' => 'token',
+  );
+  // Leave scope out, unless it is explicitly in options, so that it can be appended in fb.js.
+  if (is_array($options['scope'])) {
+    $options['scope'] = implode(',', $options['scope']);
+  }
+  if (!empty($options['scope'])) {
+    $query['scope'] = $options['scope'];
+  }
+
+  $url = url('https://www.facebook.com/dialog/oauth', array(
+           'query' => $query,
+         ));
+  return $url;
+}
+
+function fb_remote_auth_url($options) {
+  $url = NULL;
+  if (empty($options['fba'])) {
+    $options = fb_get_app();
+  }
+  // defaults
+  $options += array(
+    'remote_uri' => fb_auth_redirect_uri(current_path(), array('query' => array('client_id' => $options['fba']))),
+    'scope' => '',
+  );
+  if (!empty($options['namespace'])) {
+    // Pass user to canvas URL.  Can't pass normal query params to a canvas URL.
+    // urlencode twice to avoid slash problems in apache.
+
+    // This URL will provide an explanation page, or parse a token.
+    $url = 'https://apps.facebook.com/' . $options['namespace'] . '/fb_remote/auth/' . urlencode(urlencode('scope=' . $options['scope'])) . '/' . urlencode(urlencode('site_name=' . variable_get('site_name', url('<front>', array('absolute' => TRUE))))) . '/' . urlencode(urlencode('remote_uri=' . $options['remote_uri']));
+
+    // This URL will get the token for the above URL to parse.
+    $url = url('https://www.facebook.com/dialog/oauth', array(
+                 'query' => array(
+                   'scope' => $options['scope'],
+                   'client_id' => $options['fba'],
+                   'redirect_uri' => $url,
+                   //'response_type' => 'token',
+                 ),
+             ));
+  }
+  return $url;
+}
+/**
+ * The auth process requires a redirect_uri which must be identical when it is passed to facebook two times.
+ *
+ * TODO: simplify the parameters to make calling this easier.
+ */
+function fb_auth_redirect_uri($path = NULL, $options = array()) {
+  if (!$path) {
+    $path = current_path();
+  }
+  $options = $options + array(
+    'absolute' => TRUE,
+  );
+  $uri = url(current_path(), $options);
+  return $uri;
+}
+
+/**
+ * When user returns from fb_auth process, $_REQUEST might contain token details.
+ */
+function fb_auth_get_token($app = NULL) {
+  if (!$app) {
+    $app = fb_get_app();
+  }
+  // Handle oauth parameters from facebook.
+  // http://developers.facebook.com/docs/authentication/server-side/
+  if (!empty($_REQUEST['code']) && !empty($_REQUEST['state']) && !empty($app['secret'])) {
+
+    // If redirect_uri include client_id, we can rule out some apps.
+    if (!empty($_REQUEST['client_id']) &&
+        $_REQUEST['client_id'] != $app['fba']) {
+      return;
+    }
+
+    // Check state to ensure it was this user who generated the token.
+    if ($_REQUEST['state'] == _fb_oauth_state() && !empty($app['secret'])) {
+      $url = url('https://graph.facebook.com/oauth/access_token', array(
+                   'query' => array(
+                     'client_id' => $app['fba'],
+                     'client_secret' => $app['secret'],
+                     'code' => $_REQUEST['code'],
+                     // The redirect_uri here must exactly match the one from fb_server_auth_url.
+                     'redirect_uri' => fb_auth_redirect_uri(current_path(), array('query' => array('client_id' => $app['fba']))),
+                   )));
+
+      $result = drupal_http_request($url); // Do not use fb_http for this request.
+
+      if ($result->code == 200 && !empty($result->data)) {
+        $data = array();
+        parse_str($result->data, $data); // access_token and expires
+        return $data['access_token'];
+      }
+    }
+  }
+}
+
+/**
+ * To configure this module, we need to send the user to the Fb app, in
+ * order to authorize it.  The page we send them to explains the various
+ * permission options, then presents facebook's dialog for authorizing the
+ * permissions.
+ */
+function fb_user_token_url() {
+  $app = fb_get_app();
+  $this_page = url(current_path(), array('absolute' => TRUE));
+
+  $url = url($app['base_url'] . '/fb_app/authorize/form', array(
+               'query' => array(
+                 'redirect_uri' => $this_page,
+                 'site_name' => variable_get('site_name', ''),
+               ),
+             ));
+  return $url;
+}
+
+/**
+ * Wrapper around drupal_http_request() which detects error codes.
+ */
+function fb_http($url, array $options = array()) {
+  try {
+    $response = drupal_http_request($url, $options);
+
+    return fb_http_parse_response($response);
+  }
+  catch (Exception $e) {
+    if (!empty($e->fb_code) && $e->fb_code == 190) {
+      //dpm(debug_backtrace(), __FUNCTION__);
+      // Token has expired.
+      $url_data = drupal_parse_url($url);
+      //dpm($url_data, __FUNCTION__);
+      if ($token = $url_data['query']['access_token']) {
+        fb_token_invalid($token);
+      }
+    }
+    else {
+      fb_log_exception($e, t('Failed to query %url.', array(
+            '%url' => $url,
+            '%code' => $e->fb_code,
+          )));
+
+      fb_log_exception($e, t('Failed to query %url. <pre>!debug</pre>', array(
+            '%url' => $url,
+            '%code' => $e->fb_code,
+            '!debug' => print_r($options, 1),
+          )));
+
+    }
+
+    throw $e;
+  }
+}
+
+/**
+ * Helper to parse data return from fb graph API.
+ *
+ * Called from both fb_graph() and fb_graph_batch() which deal with
+ * slightly different data structures.  Written to support both.
+ */
+function fb_http_parse_response($response) {
+  if (is_object($response) && $response->data) {
+    $data = fb_json_decode($response->data);
+    // Yes, it's double encoded. At least sometimes.
+    if (is_string($data)) {
+      //dpm($data, __FUNCTION__ . " double encoded response!"); // Still happens?
+      $data = fb_json_decode($data);
+    }
+  }
+  elseif (is_array($response) && !empty($response['body'])) {
+    // Data returned to fb_graph.
+    $response = (object) $response;
+    $data = fb_json_decode($response->body);
+  }
+
+  if (isset($response->error)) {
+    $msg = t("!error: !detail (http !code)", array(
+             '!error' => $response->error,
+             '!code' => $response->code,
+             '!detail' => implode(' ', $data['error']),
+           ));
+    throw new fb_GraphException($msg, $data['error']['code'], $response->code);
+  }
+  elseif (isset($data['error'])) {
+    // Sometimes facebook response is OK, even though data is error.
+    $msg = t("(!type !code) !error: !detail", array(
+             '!error' => $data['error']['message'],
+             '!code' => $data['error']['code'],
+             '!type' => $data['error']['type'],
+             '!detail' => implode(' ', $data['error']),
+           ));
+    throw new fb_GraphException($msg, $data['error']['code'], $response->code);
+  }
+  else {
+    // Success.
+    return $data;
+  }
+}
+
+/**
+ * Wrapper because PHP versions differ.
+ */
+function fb_json_decode($json, $assoc= TRUE, $depth = 512) {
+  if (version_compare(PHP_VERSION, '5.4.0', '>=')) {
+    // BIGINT prevents facebook ids in scientific notation.
+    return json_decode($json, $assoc, $depth, JSON_BIGINT_AS_STRING);
+  }
+  else {
+    // This often won't work.
+    return json_decode($json, $assoc, $depth);
+  }
+
+
+}
+
+/**
+ * Read from facebook's graph.
+ *
+ * @param $do_cache
+ * Flags indicating which cache settings to use.
+ */
+function fb_graph($path, $params = NULL, $do_cache = NULL) {
+  if (isset($params['access_token']) && !$params['access_token'] && function_exists('debugger')) debugger();
+
+  // Accept either params array or access token, for caller's convenience.
+  if (is_array($params)) {
+    $token = isset($params['access_token']) ? $params['access_token'] : NULL;
+  }
+  elseif (is_string($params)) {
+    $token = $params;
+    $params = array();
+  }
+  else {
+    $token = NULL;
+    $params = array();
+  }
+
+  if ($token === NULL) {
+    $token = fb_access_token();
+    if ($do_cache === NULL) {
+      // Default cache setting, when no token passed in.
+      $do_cache = variable_get(FB_VAR_USE_CACHE, FB_CACHE_QUERY | FB_CACHE_STORE);
+    }
+  }
+
+
+  if ($do_cache != FB_CACHE_NONE) {
+    $cid = $path;
+  }
+
+  // Cache paths starting with keywords in the session only.
+  $session_cache = FALSE;
+  foreach (array('me', 'app') as $key) {
+    if (strpos($path, $key) === 0) {
+      $session_cache = TRUE;
+      $cid = FALSE;
+      break;
+    }
+  }
+
+
+  // Return app, me from session.
+  if ($session_cache && ($do_cache && FB_CACHE_QUERY) && !empty($_SESSION) && !empty($_SESSION['fb']) && !empty($_SESSION['fb'][$token]) && !empty($_SESSION['fb'][$token][$path])) {
+    return $_SESSION['fb'][$token][$path];
+  }
+
+  // Return other paths from cache.
+  if (($do_cache & FB_CACHE_QUERY) && $cid) {
+    $cache = cache_get($cid, 'cache_fb');
+    if ($cache && !empty($cache->data)) {
+      return $cache->data;
+    }
+  }
+
+  // Complex graph params must be json encoded.
+  foreach ($params as $key => $value) {
+    if (is_array($value)) {
+      $params[$key] = json_encode($value);
+    }
+  }
+
+  // Path not cached, query facebook graph.
+  if ($token) {
+    $params['access_token'] = $token;
+  }
+  $url = url("https://graph.facebook.com/$path", array(
+               'query' => $params,
+             ));
+  $return = fb_http($url);
+
+  // Cache results.
+  if ($session_cache && ($do_cache & FB_CACHE_STORE)) {
+    $_SESSION['fb'][$token][$path] = $return;
+  }
+
+  if (!empty($cid) && ($do_cache & FB_CACHE_STORE)) {
+    cache_set($cid, $return, 'cache_fb', CACHE_TEMPORARY);
+    if (!empty($return['id']) && $return['id'] != $cid) {
+      cache_set($return['id'], $return, 'cache_fb', CACHE_TEMPORARY);
+    }
+  }
+
+  return $return;
+}
+
+/**
+ * Read from facebook's graph in batch mode.  Allows a single request to facebook to return data from multiple graph nodes.
+ *
+ * Only GET currently supported.
+ *
+ * @param $paths
+ * An array containing one or more graph paths.
+ *
+ * @param $params
+ * The access token to use for this request.
+ *
+ * @param $options
+ * TODO: cache control.
+ *
+ * @return
+ * Returns an array where each key is one of the paths passed in.  The Values are the graph information for that path.
+ */
+function fb_graph_batch($paths, $params = NULL, $options = array(), &$errors = NULL) {
+  if (isset($params['access_token']) && !$params['access_token'] && function_exists('debugger')) debugger();
+
+  // Accept either params array or access token, for caller's convenience.
+  if (is_array($params)) {
+    $token = !empty($params['access_token']) ? $params['access_token'] : FALSE;
+  }
+  elseif (is_string($params)) {
+    $token = $params;
+    $params = array('access_token' => $token);
+  }
+  elseif ($params === NULL) {
+    $token = NULL;
+    $params = array('access_token'=> fb_access_token());
+  }
+
+  foreach ($paths as $path) {
+    // Accept either array or path string, for caller's convenience.
+    if (is_string($path)) {
+      $path_array[] = array(
+        'method' => 'GET',
+        'relative_url' => $path,
+      );
+    }
+    else {
+      $path_array[] = $path + array(
+        // defaults
+        'method' => 'GET',
+      );
+    }
+  }
+  $params['batch'] = json_encode($path_array);
+
+  $url = url("https://graph.facebook.com/", array(
+               'query' => $params,
+             ));
+  $result = fb_http($url, array('method' => 'POST'));
+
+  // Put the result into an easy to work with format.
+  foreach ($paths as $i => $path) {
+    if (is_array($path)) {
+      $path = $path['relative_url'];
+    }
+    try {
+      $return[$path] = fb_http_parse_response($result[$i]);
+    }
+    catch (exception $e) {
+      // If caller passed in $errors array, store the error. Otherwise fail loudly.
+      if (!isset($errors)) {
+        fb_log_exception($e, t('Batch query %path failed.', array('%path' => $path)));
+        throw $e;
+      }
+      else {
+        $errors[$path] = $e;
+      }
+    }
+  }
+
+  return $return;
+}
+
+/**
+ * Write to facebook's graph.
+ */
+function fb_graph_post($path, $params) {
+  if (isset($params['access_token']) && !$params['access_token'] && function_exists('debugger')) debugger();
+
+  if (!isset($params['access_token'])) {
+    $params['access_token'] = fb_access_token();
+  }
+  $url = url("https://graph.facebook.com/$path");
+
+  $options = array(
+    'method' => 'POST',
+    'data' => drupal_http_build_query($params),
+  );
+
+  $data = fb_http($url, $options);
+  return $data;
+}
+
+/**
+ * Delete from facebook's graph.
+ */
+function fb_graph_delete($path, $params) {
+  if (isset($params['access_token']) && !$params['access_token'] && function_exists('debugger')) debugger();
+
+  // Accept either params array or access token, for caller's convenience.
+  if (is_array($params)) {
+    $token = !empty($params['access_token']) ? $params['access_token'] : FALSE;
+  }
+  elseif (is_string($params)) {
+    $token = $params;
+    $params = array('access_token' => $token);
+  }
+  elseif ($params === NULL) {
+    $token = NULL;
+    $params = array('access_token'=> fb_access_token());
+  }
+
+  $url = url("https://graph.facebook.com/$path");
+
+  $options = array(
+    'method' => 'DELETE',
+    'data' => drupal_http_build_query($params),
+  );
+
+  $data = fb_http($url, $options);
+  return $data;
+}
+
+/**
+ * Facebook's older api methods.
+ */
+function fb_api($method, $params) {
+  $params['format'] = 'json-strings';
+  $app = fb_get_app();
+  $params['api_key'] = $app['client_id'];
   $url = url("https://api.facebook.com/method/{$method}", array(
                'query' => $params,
              ));
-  // If facebook gives errors like "Invalid OAuth 2.0 Access Token 190/Unable to get application prop" it might be necessary to uncomment the urldecode below.
-  // http://forum.developers.facebook.net/viewtopic.php?id=76228
-  // $url = rawurldecode($url);
-
   $http = drupal_http_request($url);
 
-  if (!isset($http->error) && isset($http->data)) {
-    $data = json_decode($http->data, TRUE);
+  if ($http->data) {
+    $data = fb_json_decode($http->data);
     // Yes, it's double encoded. At least sometimes.
     if (is_string($data)) {
-      $data = json_decode($data, TRUE);
+      $data = fb_json_decode($data);
     }
     if (is_array($data)) {
       if (isset($data['error_code'])) {
-        throw new FacebookApiException($data);
+        throw new Exception($data['error_msg'], $data['error_code']);
       }
     }
     elseif ($http->data == 'true' || $http->code == 200) {
@@ -734,1184 +1356,357 @@ function fb_call_method($fb, $method, $params = array()) {
   }
 }
 
+function fb_fql($query, $token = NULL) {
+  $params['query'] = $query;
+  if ($token === NULL) {
+    $params['access_token'] = fb_access_token();
+  }
+  elseif ($token) {
+    $params['access_token'] = $token;
+  }
+
+  return fb_api('fql.query', $params);
+
+}
+
 /**
- * Helper function for fql queries.
+ * Implements hook_flush_caches().
  *
- * Use $params to pass a session_key, when needed.
+ * fb_graph does something unusual in that it caches some items in the local session.  These end up not flushed when caches are cleared.  Probably, it would be best to stop that practice and make a database table devoted to the session caches (@todo).  Until that is done, this hook at least lets admins flush their own session cache.
  */
-function fb_fql_query($fb, $query, $params = array()) {
-  try {
-    $params['query'] = $query;
-    //$result = fb_call_method($fb, 'fql.query', $params);
-    $params['method'] = 'fql.query';
-    $result = $fb->api($params);
-
-    return $result;
-  }
-  catch (Exception $e) {
-    fb_log_exception($e, t("FQL query failed.  The query was \"%query\".", array(
-                             '%query' => $query,
-                           )));
-  }
+function fb_flush_caches() {
+  // By unsetting this portion of the session, queries to fb_graph('me') will be flushed.
+  unset($_SESSION['fb']);
+  return array(); // Without this, flush caches breaks!
 }
 
 /**
- * Helper function for facebook's batch graph api.
- *
- * This function accepts a simpler interface than facebook's.  The queries are
- * passed in as a simple array, and the data is parsed into a PHP data
- * structure.
- *
- * @TODO: when $method=='GET', share caching with fb_api().
+ * Helper to log exceptions returned from facebook API.
  */
-function fb_api_batch($fb, $queries, $params, $method = 'GET') {
-  $data = array();
+function fb_log_exception($e, $detail = NULL, $token = NULL) {
+  // @TODO: get the translation right.
+  $text = "$detail <em>" . $e->getMessage() . '</em>';
+  if (user_access('access administration pages') && error_reporting()) {
+    drupal_set_message($text, 'error');
 
-  // Build facebook's data structure.  Our's supports only GET or POST at a time.
-  $fb_queries = array();
-  foreach ($queries as $query) {
-    $fb_queries[] = array('method' => $method, 'relative_url' => $query);
-  }
-
-  $wrapped_data = $fb->api('/?batch=' . json_encode($fb_queries), 'POST', $params); // Use POST, not $method.
-
-  foreach ($wrapped_data as $w_d) {
-    if ($w_d['code'] == 200 && isset($w_d['body'])) {
-      $data[] = json_decode($w_d['body'], TRUE);
-    }
-    else {
-      // Unexpected code
-      $data[] = $w_d;
-    }
-  }
-
-  return $data;
-}
-
-
-/**
- * Implements hook_page_alter().
- * Can alter the $page['page_bottom'] hidden region here.
- */
-function fb_page_alter(&$page) {
-  global $_fb, $_fb_app;
-
-  // This element recommended by facebook. http://developers.facebook.com/docs/reference/javascript/
-  $output = "<div id=\"fb-root\"></div>\n";
-
-  $settings = fb_js_settings();
-
-  $output .= "<script type=\"text/javascript\">\n";
-  $output .= "<!--//--><![CDATA[//><!--\n";
-
-  // Put this here instead of fb_devel.module because it must come first.
-  if (module_exists('fb_devel')) {
-    $output .= "if (typeof(FB_Devel) != 'undefined') {\n";
-    $output .= "  FB_Devel.sanityCheck()\n";
-    $output .= "}\n";
-  }
-
-  // Pending javascript that needs to execute after FB is initialized.
-  $js_array = fb_invoke(FB_OP_JS, array('fb' => $GLOBALS['_fb'], 'fb_app' => $GLOBALS['_fb_app']), array());
-  if (count($js_array)) {
-    // The function we define in the footer will be called after FB is initialized.
-    $output .= "FB_JS.initHandler = function() {\n";
-    //$output .= "debugger;\n";
-    $output .= implode("\n  ", $js_array);
-    $output .= "};\n";
-    $output .= "jQuery(document).bind('fb_init', FB_JS.initHandler);\n\n";
-  }
-
-  // Our settings.  We add them here, as late during request as possible.
-  $output .= "  jQuery.extend(Drupal.settings, " . json_encode(array('fb' => fb_js_settings())) . ");\n\n";
-
-  // Initialize FB.
-  $output .= "if (typeof(FB) == 'undefined') {\n";
-  // Load the JS SDK asynchronously.
-  // http://developers.facebook.com/docs/reference/javascript/
-  $output .= "  var e = document.createElement('script');\n";
-  $output .= "  e.async = true;\n";
-  $output .= "  e.src = Drupal.settings.fb.js_sdk_url;\n";
-  $output .= "  document.getElementById('fb-root').appendChild(e);\n";
-  $output .= "}\n\n";
-
-  $output .= "\n//--><!]]>\n";
-  $output .= "\n</script>\n";
-
-  $page['page_bottom']['fb'] = array(
-    '#type' => 'markup',
-    '#markup' => $output,
-  );
-}
-
-/**
- * Is the current request a canvas page?
- */
-function fb_is_canvas() {
-  if (fb_is_tab()) {
-    return FALSE;
-  }
-  elseif (fb_settings(FB_SETTINGS_CB)) {
-    // Using fb_url_rewrite.
-    return TRUE;
-  }
-  elseif (fb_settings(FB_SETTINGS_TYPE) == FB_SETTINGS_TYPE_CANVAS) {
-    // No rewrite, but fb_settings.inc has detected type.
-    return TRUE;
-  }
-  return FALSE;
-}
-
-/**
- * Is the current page a profile tab?
- */
-function fb_is_tab() {
-  global $_fb;
-
-  if (fb_settings(FB_SETTINGS_TYPE) == FB_SETTINGS_TYPE_PAGE_TAB) {
-    return TRUE;
-  }
-  elseif (fb_settings(FB_SETTINGS_TYPE) == FB_SETTINGS_TYPE_PROFILE) { // deprecated FBML tab
-    return TRUE;
-  }
-  elseif (isset($_REQUEST['fb_sig_in_profile_tab']) &&
-          $_REQUEST['fb_sig_in_profile_tab']) { // deprecated ancient history
-    // Old way, no migrations enabled.
-    return TRUE;
-  }
-  return FALSE;
-}
-
-/**
- * Does the current user like the current page?
- *
- * Expect this to work only when fb_is_tab() returns TRUE.
- */
-function fb_is_page_liked() {
-  global $_fb;
-  $sr = $_fb->getSignedRequest();
-  return (isset($sr['page']) && $sr['page']['liked']);
-}
-
-/**
- * Does the current user administer the current page?
- *
- * Expect this to work only when fb_is_tab() returns TRUE.
- */
-function fb_is_page_admin() {
-  global $_fb;
-  $sr = $_fb->getSignedRequest();
-  return (isset($sr['page']) && $sr['page']['admin']);
-}
-
-
-
-/**
- * Sometimes calls to fb_api_init succeed, but calls to the client api
- * will fail because cookies are obsolete or what have you. This
- * function makes a call to facebook to test the session. Expensive,
- * so use only when necessary.
- *
- */
-function fb_api_check_session($fb) {
-  $success = FALSE;
-  try {
-    $me = $fb->api('me');
-
-    // Store the locale if set.
-    if (isset($me['locale'])) {
-      $_SESSION['fb_locale'] = $me['locale'];
+    if ($e->getCode() == 100) {
+      // https://developers.facebook.com/bugs/285682524881107/
     }
 
-    // Does not matter what is returned, as long as exception is not thrown.
-    $success = TRUE;
   }
-  catch (Exception $e) {
-    if (fb_verbose()) {
-      watchdog('fb', 'fb_api_check_session failed. Possible attempt to spoof a facebook session!');
-      //watchdog('fb', print_r($fb->getSession(), 1));
-    }
-    $success = FALSE;
-    if (fb_verbose()) {
-      fb_log_exception($e, t("fb_api_check_session failed."));
-    }
-    $app_id = $fb->getAppId();
-
-    unset($_SESSION['fb'][$app_id]);
-    unset($_SESSION['_fb_' . $app_id]);
-    unset($_SESSION['_fb_token_' . $app_id]);
-
-    // Unsetting the javasript fbu can be helpful when third-party cookies disabled.
-    //fb_js_settings('fbu', 0); @TODO still needed? helpful?
-
-  }
-  return $success;
-}
-
-
-/**
- * Helper to ensure local user is logged out, or an anonymous session is refreshed.
- */
-function _fb_logout() {
-  if (session_name()) { // Avoid PHP warning.
-    session_destroy();
-    $GLOBALS['user'] = drupal_anonymous_user();
-    drupal_session_initialize();
-  }
-}
-
-
-/**
- * Returns the facebook user id currently visiting a canvas page, or if
- * set_user has been called. Unlike fb_get_fbu(), works only on canvas and
- * connect pages, or when infinite session has been initialized.
- */
-function fb_facebook_user($fb = NULL) {
-  if (!isset($fb))
-    $fb = $GLOBALS['_fb'];
-
-  if (!$fb)
-    return;
-
-  try {
-    $fbu = $fb->getUser();
-    return $fbu;
-  }
-  catch (FacebookApiException $e) {
-    fb_log_exception($e,
-      t('Failed to get Facebook user id. detail: !detail',
-        array('!detail' => print_r($e, 1))));
-  }
-}
-
-/**
- * Helper function to ensure user has authorized an application.
- *
- * Similar to the old require_login() provided by the old facebook API.
- * Works by redirecting the user as described in http://developers.facebook.com/docs/authentication/.
- *
- * @TODO handle users who skip.
- */
-function fb_require_authorization($fb = NULL, $destination = NULL) {
-  if (!$fb)
-    $fb = $GLOBALS['_fb'];
-
-  if (!$fb) {
-    throw new Exception(t('Failed to authorize facebook application.  Could not determine application id.'));
-  }
-
-  $fbu = fb_facebook_user($fb);
-  if (!$fbu) {
-    $client_id = $fb->getAppId();
-    $redirect_uri = $destination ? $destination : url(current_path(), array('absolute' => TRUE, 'fb_canvas' => fb_is_canvas()));
-
-    $url = "https://graph.facebook.com/oauth/authorize?client_id=$client_id&redirect_uri=$redirect_uri";
-
-    // Which permissions to prompt for?
-    $perms = array();
-    drupal_alter('fb_required_perms', $perms);
-    if (count($perms)) {
-      $url .= '&scope=' . implode(',', $perms);
-    }
-
-    if (fb_is_canvas() && module_exists('fb_canvas')) {
-      fb_canvas_redirect($url);
-    }
-    else {
-      header('Location: ' . $url);  // drupal_goto is for internal redirects only.
-    }
+  if ($token) {
+    $link = l(t('debug token'), url('https://developers.facebook.com/tools/debug/access_token', array(
+                                      'query' => array(
+                                        'q' => $token,
+                                      ))));
   }
   else {
-    return $fbu;
+    $link = NULL;
   }
-}
-
-/**
- * Helper tells other modules when to load admin hooks.
- */
-function fb_is_fb_admin_page() {
-  if (arg(0) == 'admin' && (arg(1) == 'fb' || arg(2) == 'fb')) {
-    // Keep consistant titles across tabs served by multiple modules.
-    if ($label = arg(FB_PATH_ADMIN_APPS_ARGS))
-      drupal_set_title($label);
-    else
-      drupal_set_title(t('Drupal for Facebook'));
-
-    return TRUE;
-  }
-}
-
-/**
- * Given a facebook user id, learn the local uid, if any.
- *
- */
-function fb_get_uid($fbu, $fb_app = NULL) {
-  $uid = NULL;
-  if ($fbu) {
-    $uid = fb_invoke(FB_OP_GET_UID, array('fbu' => $fbu, 'fb_app' => $fb_app));
-  }
-  return $uid;
+  watchdog('fb', $text, array(), WATCHDOG_WARNING, $link);
 }
 
 
 /**
- * Given a local user id, find the facebook id.
- *
- * Invokes hook_fb(FB_OP_GET_FBU) in order to ask other modules what the fbu
- * is. Typically, fb_user.module will answer the question.
+ * Helper function for the common fb_graph('me').
  */
-function fb_get_fbu($uid, $fb_app = NULL) {
-  // Accept either a user object or uid passed in.
-  if (is_object($uid) && isset($uid->uid) && !empty($uid->fbu)) {
-    return $uid->fbu;
-  }
-  elseif (is_object($uid)) {
-    $uid = isset($uid->uid) ? $uid->uid : 0;
-  }
-
-  if ($uid) {
-    // User management is handled by another module. Use our hook to ask for mapping.
-    $fbu = fb_invoke(FB_OP_GET_FBU, array('uid' => $uid,
-                                          'fb' => $GLOBALS['_fb']));
-  }
-  else {
-    $fbu = NULL;
-  }
-  return $fbu;
-}
-
-/**
- * Convenience function to learn the fbu associated with a user, node or comment.
- * Used in theming (X)FBML tags.
- */
-function fb_get_object_fbu($object) {
-  $cache = &drupal_static(__FUNCTION__);
-  if (!isset($cache))
-    $cache = array();
-
-  if (isset($object->uid) && isset($cache[$object->uid])) {
-    $fbu = $cache[$object->uid];
-    return $fbu;
-  }
-  elseif (isset($object->fbu)) {
-    // Explicitly set.
-    $fbu = $object->fbu;
-  }
-  elseif (isset($object->init) &&
-          ($pos = strpos($object->init, '@facebook'))) {
-    // Naming convention used by fb_user when creating accounts.
-    // $object->init may be present when object is a user.
-    $fbu = substr($object->init, 0, $pos);
-  }
-  elseif (isset($object->name) &&
-          $pos = strpos($object->name, '@facebook')) {
-    $fbu = substr($object->name, 0, $pos);
-  }
-  elseif ($object->uid > 0) {
-    // This can be expensive on pages with many comments or nodes!
-    $fbu = fb_get_fbu($object->uid);
-  }
-
-  if (isset($fbu) && is_numeric($fbu)) {
-    if (isset($object->uid) && ($object->uid > 0)) {
-      $cache[$object->uid] = $fbu;
-    }
-    return $fbu;
-  }
-}
-
-
-/**
- * Convenience method to get app info based on id or nid.
- */
-function fb_get_app($search_data) {
-  // $search_data can be an apikey, or an array of other search params.
-  if (!is_array($search_data))
-    $search_data = array('id' => $search_data);
-
-  $fb_app = fb_invoke(FB_OP_GET_APP, $search_data);
-  return $fb_app;
-}
-
-/**
- * Convenience method for other modules to attach data to the fb_app
- * object.
- *
- * It is assumed the fb_app implementation will fill in the data
- * field. We really should clean up the separation between modules,
- * or merge fb_app.module into this one.
- */
-function fb_get_app_data(&$fb_app) {
-  if (!$fb_app) {
-    // Avoid PHP strict error.
-    return array();
-  }
-  if (!isset($fb_app->fb_app_data)) {
-    $fb_app->fb_app_data = !empty($fb_app->data) ? unserialize($fb_app->data) : array();
-  }
-  return $fb_app->fb_app_data;
-}
-
-/**
- * Will return a human-readable name if the fb_app module supports it, or
- * fb_admin_get_app_properties($fb_app) has been called. However we don't
- * take the relatively expensive step of calling that ourselves.
- */
-function fb_get_app_title($fb_app) {
-  if (isset($fb_app->title))
-    return $fb_app->title;
-  elseif (isset($fb_app->application_name)) {
-    return $fb_app->application_name;
-  }
-  else {
-    return $fb_app->label;
-  }
-}
-
-/**
- * Convenience method to return array of all know fb_apps.
- */
-function fb_get_all_apps() {
-  $apps = fb_invoke(FB_OP_GET_ALL_APPS, NULL, array());
-  return $apps;
-}
-
-/**
- * A convenience method for returning a list of facebook friends.
- *
- * This should work efficiently in canvas pages for finding friends of
- * the current user.
- *
- * @TODO - also support users who have permitted offline access.
- *
- * @return: an array of facebook ids
- */
-function fb_get_friends($fbu, $fb_app = NULL) {
-  $cache = &drupal_static(__FUNCTION__);
-  if (!$fb_app)
-    $fb_app = $GLOBALS['_fb_app'];
-
-  // Facebook only allows us to query the current user's friends, so let's try
-  // to log in as that user. It will only actually work if they are the
-  // current user of a canvas page, or they've signed up for an infinite
-  // session.
-  $fb = fb_api_init($fb_app, $fbu);
-  if (!$fb || !$fbu)
-    return;
-
-  $items = array();
-  if (!isset($cache[$fbu])) {
-    if ($fb === $GLOBALS['_fb'] &&
-        $fbu == fb_facebook_user($fb)) {
-      try {
-        $items = fb_call_method($fb, 'friends.get', array(
-                                  'uid' => $fbu,
-                                ));
-        $cache[$fbu] = $items;
-      }
-      catch (Exception $e) {
-        fb_log_exception($e, t('Failed call to friends.get'), $fb);
-      }
-
-    }
-    // friends_get does not work in cron call, so we double check. @TODO - still needed?
-    if (!$items || !count($items)) {
-      $logged_in = fb_facebook_user($fb);
-      $query = "SELECT uid2 FROM friend WHERE uid1=$fbu"; // FQL, no {curly_brackets}!
-      try {
-        $result = fb_call_method($fb, 'fql.query', array(
-                                   'query' => $query,
-                                 ));
-        //dpm($result, "FQL " . $query); // debug
-        if (is_array($result))
-          foreach ($result as $data) {
-            $items[] = $data['uid2'];
-          }
-
-        // Facebook's API has the annoying habit of returning an item even if user
-        // has no friends.  We need to clean that up.
-        if (!$items[0])
-          unset($items[0]);
-
-        $cache[$fbu] = $items;
-      }
-      catch (Exception $e) {
-        fb_log_exception($e, t('Failed call to fql.query: !query', array('!query' => $query)), $fb);
-      }
-
-    }
-  }
-
-  if (isset($cache[$fbu])) {
-    return $cache[$fbu];
-  }
-}
-
-// Return array of facebook gids
-function fb_get_groups($fbu, $fb_app = NULL) {
-  $items = array();
-  $groups = fb_get_groups_data($fbu);
-
-  if ($groups && count($groups))
-    foreach ($groups as $data) {
-      $items[] = $data['gid'];
-    }
-  return $items;
-}
-
-function fb_get_groups_data($fbu, $fb_app = NULL) {
-  $cache = &drupal_static(__FUNCTION__);
-
-  $fb = _fb_api_init($fb_app);
-  if (!$fb || !$fbu)
-    return;
-
-  if (!isset($cache[$fbu])) {
-    $cache[$fbu] = fb_call_method($fb, 'groups.get', array(
-                                    'uid' => $fbu,
-                                  ));
-  }
-
-  return $cache[$fbu];
-}
-
-
-//// Menu structure.
-
-// Attempt to make an access callback
-function fb_user_accessXXX($string, $account = NULL) {
-  if (!user_access(FB_PERM_ADMINISTER, $account)) {
-    // Require the user to authorize the app.
-    fb_require_authorization();
-  }
-  return user_access($string, $account);
-}
-
-/**
- * Implements hook_menu().
- */
-function fb_menu() {
-  $items = array();
-
-  // Admin pages overview.
-  $items[FB_PATH_ADMIN] = array(
-    'title' => 'Facebook Apps',
-    'description' => 'Facebook Applications',
-    'page callback' => 'fb_admin_page',
-    'access arguments' => array(FB_PERM_ADMINISTER),
-    'file' => 'fb.admin.inc',
-    'type' => MENU_NORMAL_ITEM,
-  );
-  $items[FB_PATH_ADMIN . '/list'] = array(
-    'title' => 'List Apps',
-    'weight' => -2,
-    'type' => MENU_DEFAULT_LOCAL_TASK,
-  );
-
-  $items[FB_PATH_ADMIN . '/settings'] = array(
-    'title' => 'Settings',
-    'access arguments' => array(FB_PERM_ADMINISTER),
-    'weight' => -1,
-    'type' => MENU_LOCAL_TASK,
-    'page callback' => 'drupal_get_form',
-    'page arguments' => array('fb_admin_settings'),
-    'file' => 'fb.admin.inc',
-  );
-
-
-  // Admin pages for each app.
-  $items[FB_PATH_ADMIN_APPS . '/%fb'] = array(
-    'title' => 'Application Detail',
-    'description' => 'Facebook Applications',
-    'page callback' => 'fb_admin_app_page',
-    'page arguments' => array(FB_PATH_ADMIN_APPS_ARGS),
-    'access arguments' => array(FB_PERM_ADMINISTER),
-    'file' => 'fb.admin.inc',
-    'type' => MENU_CALLBACK,
-  );
-
-  $items[FB_PATH_ADMIN_APPS . '/%fb/fb'] = array(
-    'title' => 'View',
-    'weight' => -2,
-    'type' => MENU_DEFAULT_LOCAL_TASK,
-  );
-  $items[FB_PATH_ADMIN_APPS . '/%fb/fb/set_props'] = array(
-    'title' => 'Set Properties',
-    'description' => 'Set Facebook Application Properties',
-    'page callback' => 'drupal_get_form',
-    'page arguments' => array('fb_admin_set_properties_form', FB_PATH_ADMIN_APPS_ARGS),
-    'access arguments' => array(FB_PERM_ADMINISTER),
-    'file' => 'fb.admin.inc',
-    'type' => MENU_CALLBACK,
-  );
-
-  // Javascript helper
-  $items['fb/js'] = array(
-    'page callback' => 'fb_js_cb',
-    'type' => MENU_CALLBACK,
-    'access callback' => TRUE,
-  );
-
-  // Ajax event handler.
-  $items[FB_PATH_AJAX_EVENT . '/%'] = array(
-    'page callback' => 'fb_ajax_event',
-    'type' => MENU_CALLBACK,
-    'access callback' => TRUE,
-    'page arguments' => array(FB_PATH_AJAX_EVENT_ARGS),
-  );
-
-  // "Channel" http://developers.facebook.com/docs/reference/javascript/FB.init
-  $items['fb/channel'] = array(
-    'page callback' => 'fb_channel_page',
-    'type' => MENU_CALLBACK,
-    'access callback' => TRUE,
-  );
-
-  return $items;
-}
-
-/**
- * Implementation of a %wildcard_load(). http://drupal.org/node/224170
- *
- * Handles menu items with %fb in the path.  Seems to get called a lot(!) so we cache.
- */
-function fb_load($id) {
-  $cache = &drupal_static(__FUNCTION__);
-  if (!isset($cache))
-    $cache = array();
-  if (!isset($cache[$id])) {
-    $query = array('label' => $id);
-    if (fb_is_fb_admin_page()) {
-      // Show disabled apps to admins.
-      $query['status'] = 0; // status >= 0
-    }
-    $cache[$id] = fb_get_app($query);
-  }
-  return $cache[$id];
-}
-
-/**
- * Implementation of a %wildcard_load(). http://drupal.org/node/224170
- *
- * Handles menu items with %fbu in the path.  Simply returns the numerical id.
- */
-function fbu_load($id) {
-  if (is_numeric($id)) {
-    return $id;
-  }
-  elseif ($id == 'me') {
-    // Drupal stupidly calls this before fb_init()! So _fb may not be initialized.
-    if ($GLOBALS['_fb_app'] && !$GLOBALS['_fb']) {
-      $fb = fb_api_init($GLOBALS['_fb_app']);
-      $fbu = fb_facebook_user($fb);
-    }
-    else {
-      $fbu = fb_facebook_user();
-    }
-    return $fbu;
-  }
-  return NULL;
-}
-
-/**
- * Implementation of a %wildcard_load(). http://drupal.org/node/224170
- *
- * Handles menu items with %fb_graph in the path.  Seems to get called a lot(!) so we cache.
- */
-function fb_graph_load($id) {
-  extract(fb_vars());
-  // Drupal stupidly calls this before fb_init()! So _fb may not be initialized.
-  if ($GLOBALS['_fb_app'] && !$GLOBALS['_fb']) {
-    $fb = fb_api_init($GLOBALS['_fb_app']);
-    $fbu = fb_facebook_user($fb);
-  }
-
-  $cache = &drupal_static(__FUNCTION__);
-  if (!isset($cache))
-    $cache = array();
-  if (!isset($cache[$id])) {
-    $params = array(
-      'access_token' => fb_get_token($fb, $fbu),
-      'metadata' => 1, // debug
-    );
+function fb_me() {
+  if ($token = fb_user_token()) {
     try {
-      $cache[$id] = fb_graph($id, $params, 'GET', $fb);
+      $me = fb_graph('me', $token);
+      return $me;
     }
     catch (Exception $e) {
-      fb_log_exception($e, t('Failed to load facebook graph object %id.', array('%id' => $id)));
+      fb_log_exception($e, t('Failed to query "me".'));
     }
   }
-  return $cache[$id];
 }
 
-
-
-/**
- * Implements hook_permission().
- */
-function fb_permission() {
-  return array(
-    FB_PERM_ADMINISTER => array(
-      'title' => t('Administer Facebook settings in fb.module'),
-    ),
-  );
+function fb_is_ajax() {
+  return (arg(0) == 'fb' && arg(1) == 'ajax');
 }
 
-
 /**
- * Implements hook_exit().
+ * Menu callback for ajax event.
  *
- * When completing a canvas page we need special processing for the session. See fb_session.inc.
- *
- * Also invoke hook_fb(FB_OP_EXIT), so that other modules can handle special
- * cases (in particular form support in fb_canvas.module.
- *
- * TODO: remove this hook, for compatibility with Drupal's aggressive caching.  Modules that currently look for FB_OP_EXIT will need to implement hook_exit on their own.
+ * Returns json encoded array of javascript to execute in response to this event..
  */
-function fb_exit($destination = NULL) {
-  global $_fb_app, $_fb;
+function fb_ajax_event($event_type) {
 
-  if ($_fb_app && $_fb) {
-
-    // Invoke other modules.
-    fb_invoke(FB_OP_EXIT, array('fb_app' => $_fb_app,
-                                'fb' => $GLOBALS['_fb']),
-              $destination);
+  if (!empty($_REQUEST['client_id'])) {
+    $fba = $_REQUEST['client_id'];
   }
+  else {
+    watchdog('fb', 'FB ajax event invoked without application id.', array(), WATCHDOG_ERROR);
+  }
+
+  // The JS tells fb.js to perform actions after the ajax event has been handled.
+  $js_array = array();
+
+  if ($event_type == 'token_invalid') {
+    // fb.js has detected that a token has expired.
+    if (fb_user_token() == $_REQUEST['invalid_token']) {
+      // End the current drupal session.
+      fb_logout();
+      $js_array['fb_ajax_event'] = "FB_JS.reload()";
+    }
+    fb_token_invalid($_REQUEST['invalid_token']);
+  }
+  elseif ($event_type == 'session_change') {
+    // session_change means a new token, or an old token has expired.
+    if (!empty($_SESSION['fb'])) {
+      if (!empty($_SESSION['fb'][$fba]) && !empty($_SESSION['fb'][$fba]['access_token'])) {
+        // Forget session cache associated with old token.
+        fb_token_invalid($_SESSION['fb'][$fba]['access_token']);
+      }
+      // Forget session cache associated with app id.
+      unset($_SESSION['fb'][$fba]);
+    }
+  }
+
+  // Remember the new token.
+  if (!empty($_REQUEST['access_token'])) {
+    fb_user_token($fba, $_REQUEST['access_token']);
+  }
+
+  // We might be passed signed_request in addition to access token.
+  if (!empty($_REQUEST['signed_request'])) {
+    $sr = fb_parse_signed_request($_REQUEST['signed_request']);
+    $_SESSION['fb'][$fba]['signed_request'] = $sr;
+    $_SESSION['fb'][$fba]['fbu'] = $sr['user_id'];
+    $_SESSION['fb'][$fba]['status'] = $_REQUEST['status'];
+  }
+
+  // Allow third-parties to act.
+  $data = isset($_SESSION['fb'][$fba]) ? $_SESSION['fb'][$fba] : array();
+  $data['fba'] = $fba;
+  $data['event_type'] = $event_type;
+  $js_array = fb_invoke(FB_OP_AJAX, $data, $js_array);
+
+  drupal_json_output(array_values($js_array));
 }
 
 
 /**
- * Invoke hook_fb.
+ * Helper function to do the right things when a new token is learned.
+ *
+ * Stores the token in session for future reference.  And invokes third-party hooks.
  */
-function fb_invoke($op, $data = NULL, $return = NULL, $hook = FB_HOOK) {
+function _fb_handle_tokenXXX($token, $fba) { // Possibly not needed anymore, disabled.
+  if (empty($_SESSION['fb']) || empty($_SESSION['fb'][$fba]) ||
+      $_SESSION['fb'][$fba]['access_token'] != $token) {
+    // It's a new token.
+    $data = array(
+      'token' => $token,
+      'fba' => $fba,
+    );
+    fb_invoke('token', $data);
+  }
+
+  $_SESSION['fb'][$fba]['access_token'] = $token;
+}
+
+/**
+ * Invoke third-party hooks.
+ *
+ */
+function fb_invoke($op, $data = NULL, $return = NULL, $hook = 'fb') {
   foreach (module_implements($hook) as $name) {
     $function = $name . '_' . $hook;
     try {
       $function($op, $data, $return);
     }
     catch (Exception $e) {
-      if (isset($data['fb_app'])) {
-        fb_log_exception($e, t('Exception calling %function(%op) (!app)', array(
-                                 '%function' => $function,
-                                 '%op' => $op,
-                                 '%label' => $data['fb_app']->label,
-                                 '%id' => $data['fb_app']->id,
-                                 '!app' => l($data['fb_app']->label, FB_PATH_ADMIN_APPS . '/' . $data['fb_app']->label),
-                               )));
-      }
-      else {
-        fb_log_exception($e, t('Exception calling %function(%op)', array(
-                                 '%function' => $function,
-                                 '%op' => $op)));
-      }
+      fb_log_exception($e, t('Exception calling %function(%op)', array(
+                               '%function' => $function,
+                               '%op' => $op,
+                             )));
     }
   }
+
   return $return;
 }
 
 /**
- * This method will clean up URLs. When serving canvas pages, extra
- * information is included in URLs. This will remove the extra
- * information. Useful when linking back to the website from a canvas page or
- * wall post.
- *
- * For example in the following code, $url2 will link out to the server's domain:
- *
- * $url = url('node/42', array('absolute' => TRUE)); // i.e. http://apps.facebook.com/example/node/42
- * $url2 = fb_scrub_urls($url); // i.e. http://example.com/node/42
- *
- *
- * @see fb_url_rewrite.inc
+ * Helper to ensure local user is logged out, or an anonymous session is refreshed.
  */
-function fb_scrub_urls($content) {
-  if (function_exists('_fb_settings_url_rewrite_prefixes')) {
-    foreach (_fb_settings_url_rewrite_prefixes() as $key) {
-      $patterns[] = "|$key/[^/]*/|";
-      $replacements[] = "";
-    }
-    $content = preg_replace($patterns, $replacements, $content);
+function fb_logout() {
+  if (session_name()) { // Avoid PHP warning.
+    //session_start(); // Make sure there is a session before destroy.
+    session_destroy();
   }
-  return $content;
+  $GLOBALS['user'] = drupal_anonymous_user();
+  drupal_session_initialize();
+}
+
+
+/**
+ * Based on https://developers.facebook.com/docs/authentication/signed_request/.
+ */
+function fb_parse_signed_request($signed_request) {
+  list($encoded_sig, $payload) = explode('.', $signed_request, 2);
+
+  // decode the data
+  $sig = fb_base64_url_decode($encoded_sig);
+  $data = fb_json_decode(fb_base64_url_decode($payload));
+
+  return $data;
 }
 
 /**
- * Convenience function to log and report exceptions.
+ * Base64 encoding that doesn't need to be urlencode()ed.
+ * Exactly the same as base64_encode except it uses
+ *   - instead of +
+ *   _ instead of /
+ *
+ * @param String base64UrlEncodeded string
  */
-function fb_log_exception($e, $text = '', $fb = NULL) {
-  if ($text)
-    $message = $text . ': ' . $e->getMessage();
-  else
-    $message = $e->getMessage();
-
-  if ($code = $e->getCode()) {
-    $message = "(#$code) $message";
-  }
-
-  if ($fb) {
-    $message .= '. (' . t('logged into facebook as %fbu', array('%fbu' => $fb->getUser())) . ')';
-  }
-  if (fb_verbose()) {
-    $message .= '<pre>' . $e . '</pre>';
-  }
-  watchdog('fb', $message, array(), WATCHDOG_ERROR);
-  if (user_access(FB_PERM_ADMINISTER)) {
-    drupal_set_message($message, 'error');
-  }
+function fb_base64_url_decode($input) {
+  return base64_decode(strtr($input, '-_', '+/'));
 }
 
 /**
- * Simple wrapper around $fb->api() which caches data.  Does not support the
- * polymorphic arguments of $fb->api(). This is not a replacement for that
- * function.
- *
- * This is intended to avoid performace problems when, for example,
- * $fb->api('me') is called several times in a single request.
- *
- * @param $graph_path
- * Something facebook's graph API will understand.  Could be an ID or a path like 'me/accounts', for example.
- *
- * @param $params
- * Extras to pass to the graph API.  When making a request that requires a
- * token, try array('access_token' => fb_get_token()).
+ * Helper function determines a name from data returned from fb_graph().
+ * Almost always, graph data includes a 'name'.  But in rare cases that is
+ * not present and we use an id instead.
  */
-function fb_api($graph_path, $params = array()) {
-  static $cache;
-  $fb = $GLOBALS['_fb'];
-  if (!$fb) {
-    return;
+function fb_get_name($graph_data) {
+  if (!empty($graph_data['name'])) {
+    return $graph_data['name'];
   }
-  if (!isset($cache)) {
-    $cache = array();
-  }
-  if (!isset($cache[$graph_path])) {
-    $cache[$graph_path] = $fb->api($graph_path, $params);
-  }
-  return $cache[$graph_path];
-}
-
-/**
- * DEPRECATED.  Use fb_api() instead.
- * Returns information about one or more facebook users.
- *
- * Historically, this helper function used facebook's users_getInfo API, hence
- * the name. Now it uses fql.query, but accomplishes the same thing.
- *
- * @param $oids
- * Array of facebook object IDs. In this case they should each be a user id.
- *
- * @param $fb
- * Rarely needed. For cases when global $_fb is not set, or more than one
- * facebook api has been initialized.
- *
- * @param $refresh_cache
- * If true, force a call to facebook instead of relying on temporarily stored
- * data.
- */
-function fb_users_getInfo($oids, $fb = NULL, $refresh_cache = FALSE) {
-  if (!$fb) {
-    $fb = $GLOBALS['_fb'];
-  }
-  $infos = array();
-
-  if (!is_array($oids))
-    $oids = array();
-
-  if ($fb) {
-    $app_id = $fb->getAppId();
-    // First try cache
-    if (!$refresh_cache && isset($_SESSION['fb'])) {
-      foreach ($oids as $oid) {
-        if (isset($_SESSION['fb'][$app_id]['userinfo'][$oid])) {
-          $info = $_SESSION['fb'][$app_id]['userinfo'][$oid];
-          $infos[] = $info;
-        }
-      }
-    }
-    if (count($infos) != count($oids)) {
-      // Session cache did not include all users, update the cache.
-      $fields = array(
-        'about_me',
-        'affiliations',
-        'birthday',
-        'name',
-        'first_name',
-        'last_name',
-        'is_app_user',
-        'pic',
-        'pic_big',
-        'pic_square',
-        'profile_update_time',
-        'proxied_email',
-        'status',
-        'email_hashes',
-        'email',
-        'uid',
-      );
-      try {
-        $infos = fb_fql_query($fb, 'SELECT ' . implode(', ', $fields) . ' FROM user WHERE uid in(' . implode(', ', $oids) . ')', array(fb_get_token($fb)));
-        // Update cache with recent results.
-        if (is_array($infos)) {
-          foreach ($infos as $info) {
-            $_SESSION['fb'][$app_id]['userinfo'][$info['uid']] = $info;
-          }
-        }
-      } catch (FacebookApiException $e) {
-        fb_log_exception($e, t('Failed to query facebook user info'), $fb);
-      }
-    }
-
-    return $infos;
-  }
-}
-
-/**
- * For debugging, add $conf['fb_verbose'] = TRUE; to settings.php.
- */
-function fb_verbose() {
-  return variable_get(FB_VAR_VERBOSE, NULL);
-}
-
-/**
- * hook_username_alter().
- *
- * Return a user's facebook name, instead of local username.
- * @TODO cache, because drupal doesn't, and calls this often.
- */
-function fb_username_alter(&$name, $account) {
-  // This function can be called very early in the bootstrap process, before
-  // the modules are initialized, in which case we will fail to alter the
-  // name.
-
-  $is_theming_username = &drupal_static('fb_theming_username');
-  $enabled = variable_get(FB_VAR_ALTER_USERNAME, FB_ALTER_USERNAME_NOT_THEMING);
-  if ($enabled == FB_ALTER_USERNAME_NEVER ||
-      $enabled == FB_ALTER_USERNAME_NOT_THEMING && $is_theming_username) {
-    // Altering disabled.
-    return;
-  }
-
-  // Skip on admin pages.
-  if (arg(0) == 'admin') {
-    return;
-  }
-
-  if (!strpos($name, '@facebook')) {
-    // Only alter unique names created by fb_user.module.
-    return;
-  }
-
-  if ($fbu = fb_get_fbu($account)) {
-    // Querying names from facebook is expensive, so some trickery here to optimize things.
-
-    // First we try the static cache.
-    $names = &drupal_static(__FUNCTION__);
-
-    if (!isset($names[$fbu])) {
-      // Next try database cache.
-      $use_cache = variable_get(FB_VAR_ALTER_USERNAME_AND_CACHE, FB_ALTER_USERNAME_DONT_CACHE);
-      if($use_cache == FB_ALTER_USERNAME_AND_CACHE) {
-        $cache = cache_get('fb_username_' . $fbu);
-        $names[$fbu] = $cache->data;
-      }
-    }
-
-    if (!isset($names[$fbu]) && !empty($GLOBALS['_fb'])) {
-      // Nothing from the previous attempts worked so we have to query facebook.com.
-      try {
-        // Use fql query instead of graph api, because it will succeed more often.
-        $data = fb_fql_query($GLOBALS['_fb'], "SELECT name FROM user WHERE uid=$fbu", array('access_token' => fb_get_token($GLOBALS['_fb'])));
-        if (count($data) && isset($data[0]['name'])) {
-          $names[$fbu] = $data[0]['name'];
-
-          if($use_cache == FB_ALTER_USERNAME_AND_CACHE) {
-            cache_set('fb_username_' . $fbu, $names[$fbu]);
-          }
-        }
-      } catch (Exception $e) {
-        fb_log_exception($e, t('Failed to alter username for facebook user %fbu', array(
-                                 '%fbu' => $fbu)));
-      }
-    }
-
-    if (!empty($names[$fbu])) {
-      $name = $names[$fbu];
-    }
-  }
-}
-
-/**
- * Implements hook_theme().
- *
- * Returns description of theme functions.
- *
- * @see fb.theme.inc
- */
-function fb_theme() {
-  return array(
-    'fb_username' => array(
-      'arguments' => array(
-        'fbu' => NULL,
-        'object' => NULL,
-        'orig' => NULL,
-       ),
-      'file' => 'fb.theme.inc',
-    ),
-    'fb_user_picture' => array(
-      'arguments' => array(
-        'fbu' => NULL,
-        'account' => NULL,
-        'orig' => NULL,
-       ),
-      'file' => 'fb.theme.inc',
-    ),
-    'fb_fbml_popup' => array(
-      'arguments' => array('elements' => NULL),
-      'file' => 'fb.theme.inc',
-    ),
-    'fb_login_button' => array(
-      'arguments' => array(
-        'text' => 'Connect with Facebook',
-        'options' => NULL),
-      'file' => 'fb.theme.inc',
-    ),
-    'fb_markup' => array(
-      'arguments' => array(
-        'not_connected_markup' => NULL,
-        'connected_markup' => '<fb:profile-pic linked=false uid=loggedinuser></fb:profile-pic>',
-        'options' => NULL,
-      ),
-      'file' => 'fb.theme.inc',
-    ),
-  );
-}
-
-//// Javascript and Ajax helpers
-
-/**
- * Ajax javascript callback.
- *
- * For sites which use ajax, various events may create javascript which is
- * normally embedded in a page. For example, posting to a user's wall. When
- * ajax is used instead of a page reload, this callback will provide any
- * javascript which should be run.
- */
-function fb_js_cb() {
-  $js_array = fb_invoke(FB_OP_JS, array('fb' => $GLOBALS['_fb'], 'fb_app' => $GLOBALS['_fb_app']), array());
-  $extra_js = implode("\n", $extra);
-  print $extra_js;
-  exit();
-}
-
-/**
- * Ajax callback handles an event from facebook's javascript sdk.
- *
- * @see
- *   fb.js and
- *   http://developers.facebook.com/docs/reference/javascript/FB.Event.subscribe
- *
- * @return
- *   Array of javascript to be evaluated by the page which called this
- *   callback.
- */
-function fb_ajax_event($event_type) {
-  global $_fb, $_fb_app;
-  $js_array = array();
-
-  if (isset($_REQUEST['appId'])) {
-    $_fb_app = fb_get_app(array('id' => $_REQUEST['appId']));
-
-    // Remember signed_request in session, in case third party cookies are disabled.
-    if (isset($_REQUEST['signed_request']) && $_REQUEST['signed_request'] &&
-        variable_get(FB_VAR_USE_SESSION, TRUE)) {
-      $_SESSION['_fb_' . $_fb_app->id] = $_REQUEST['signed_request'];
-    }
-    elseif (isset($_REQUEST['access_token']) && $_REQUEST['access_token'] &&
-            variable_get(FB_VAR_USE_SESSION, TRUE)) {
-      $_SESSION['_fb_token_' . $_fb_app->id] = $_REQUEST['access_token'];
-    }
-    else {
-      unset($_SESSION['_fb_' . $_fb_app->id]);
-      unset($_SESSION['_fb_token_' . $_fb_app->id]);
-    }
-
-    if ($_fb_app) {
-      $_fb = fb_api_init($_fb_app);
-      // Data to pass to hook_fb.
-      $data = array(
-        'fb_app' => $_fb_app,
-        'fb' => $_fb,
-        'event_type' => $event_type,
-        'event_data' => $_POST, // POSTed via ajax.
-      );
-
-      $js_array = fb_invoke(FB_OP_AJAX_EVENT, $data, $js_array);
-
-    }
-    else {
-      watchdog('fb', 'fb_ajax_event did not find application %id', array('%id' => $_REQUEST['appId']), WATCHDOG_ERROR);
-    }
-
-    if ($event_type == 'session_change') {
-      // Session change is a special case.  If user has logged out of
-      // facebook, we want a new drupal session.  We do this here, even if
-      // fb_user.module is not enabled.
-      if (!isset($_POST['fbu']) || !$_POST['fbu']) { // Logout, not login.
-        _fb_logout();
-      }
-    }
-
+  elseif (!empty($graph_data['id'])) {
+    return $graph_data['id'];
   }
   else {
-    watchdog('fb', 'fb_ajax_event called badly.  Not passed appId.', array(), WATCHDOG_ERROR);
-    // Trying to track down what makes this happen.
-    if (fb_verbose() == 'extreme') {
-      watchdog('fb', 'fb_ajax_event called badly.  Not passed appId. trace: !trace', array(
-                 '!trace' => '<pre>' . print_r(debug_backtrace(), 1) . '</pre>',
-               ), WATCHDOG_ERROR);
-    }
+    return t('Unknown');
   }
-  drupal_json_output(array_values($js_array));
-  //exit();
 }
 
 /**
- * Menu callback for custom channel.
+ * Helper function determines facebook URL for data returned from fb_graph().
+ * Sometimes graph data includes 'link' and sometimes not.  If not, the ID is
+ * usually enough to find the object.  Note however that whether the link
+ * succeeds may depend on whether the user who follows the link is logged into
+ * facebook and whether they have permission to see the object.
+ */
+function fb_get_link($graph_data) {
+  if (!empty($graph_data['link'])) {
+    return $graph_data['link'];
+  }
+  elseif (!empty($graph_data['id'])) {
+    return 'http://www.facebook.com/' . $graph_data['id'];
+  }
+  else {
+    return '';
+  }
+}
+
+
+/**
+ * Implements hook_url_inbound_alter().
  *
- * @see http://developers.facebook.com/docs/reference/javascript/FB.init
+ * Rewrite URLs for facebook canvas pages and page tabs.  This is written
+ * in a generic way, so it will work with paths starting fb__canvas/... or
+ * fb__page/...
+ *
  */
-function fb_channel_page() {
-  //headers instructing browser to cache this page.
-  // Do these work?
-  drupal_add_http_header("Cache-Control", "public");
-  drupal_add_http_header("Expires", "Sun, 17-Jan-2038 19:14:07 GMT");
+function fb_url_inbound_alter(&$path, $original_path, $path_language) {
+  //dpm(func_get_args(), __FUNCTION__);
 
-  $date = format_date(time());
-  $output = "<!-- modules/fb fb_channel_page() $date -->\n";
-  $url = fb_js_settings('js_sdk_url');
-  $output .= "<script src=\"$url\"></script>\n";
-  print $output;
-  exit();
-}
+  // Requests starting with 'fb__' are prefixed with name/value pairs.
+  // These should already have been parsed by fb_settings.inc, however we must remove them from the path.
+  if (strpos($path, 'fb__') === 0) {
+    $fb_url_alter_prefix = &drupal_static('fb_url_alter_prefix');
+    $fb_url_alter_prefix = '';
 
-//// Miscellaneous helpers and convenience functions.
+    $fb_settings = &drupal_static('fb_settings');
+    $args = explode('/', $path);
+    while (!empty($args) && isset($fb_settings[$args[0]])) {
+      $key = array_shift($args);
+      $value = array_shift($args);
 
-/**
- * Protocol (http or https) of the current request.
- */
-function fb_protocol() {
-  return (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] == 'on') ? 'https' : 'http';
-}
+      // What we pull off the path here must be prepended in outbound alter.
+      $fb_url_alter_prefix .= "$key/$value/";
 
+      // We could do something with the values here, but they've already been parsed into $fb_settings.
+    }
+    if (count($args)) {
+      $path = implode('/', $args); // remaining args
+    }
+    else {
+      // frontpage
+      $path = variable_get('site_frontpage', 'node');
+    }
 
-/**
- * Convenience wrapper around drupal_access_denied().  Call on pages where the
- * access is denied because the user is not logged into facebook.
- */
-function fb_access_denied() {
-  if (!fb_facebook_user()) {
-    drupal_set_message(t('You must <a href="#" onclick="FB.login(function(response) {}, {perms:Drupal.settings.fb.perms}); return false;">log into facebook to view this page</a>.'));
+    // Do we really have to do this here?  It seems Drupal should do this only after all inbound alters complete!
+    $alias = drupal_lookup_path('source', $path, $path_language); //can't use drupal_get_normal_path, it calls custom_url_rewrite_inbound
+    if ($alias) {
+      $path = $alias;
+    }
+    $result = $path;
   }
-  drupal_access_denied();
-  exit();
+  else {
+    // Not prefixed with fb__, nothing to do.
+  }
+}
+
+/**
+ * Implements hook_url_outbound_alter().
+ *
+ * Use $options['fb_url_alter'] = FALSE to suppress any alteration.
+ */
+function fb_url_outbound_alter(&$path, array &$options, $original_path) {
+  // Set defaults to avoid PHP notices.
+  $options += array(
+    'fb_url_alter' => TRUE,
+    'external' => FALSE,
+  );
+
+  if ($options['external'] || !$options['fb_url_alter']) {
+    return;
+  }
+
+  $fb_url_alter_prefix = &drupal_static('fb_url_alter_prefix');
+
+  if ($fb_url_alter_prefix) {
+
+    if ($path == '<front>') {
+      // Drupal makes us clean up this cruft.
+      $path = '';
+    }
+
+    $path =
+      $fb_url_alter_prefix .
+      (!empty($options['prefix']) ? $options['prefix'] : '') .
+      $path;
+  }
+}
+
+
+
+/**
+ * Define a custom exception class to keep track of both the HTTP response code and the facebook error code.
+ */
+class fb_GraphException extends Exception
+{
+  public $graph_path;
+  public $http_code;
+  public $fb_code;
+
+  // Redefine the exception so message isn't optional
+  public function __construct($message, $fb_code, $http_code, Exception $previous = null) {
+    $this->http_code = $http_code; // http response code
+    $this->fb_code = $fb_code; // original error code from facebook.
+    // make sure everything is assigned properly
+    parent::__construct($message, $fb_code, $previous);
+  }
+
+  // custom string representation of object
+  public function __toString() {
+    return __CLASS__ . ": [{$this->code}]: {$this->message}\n";
+  }
+
+  public function customFunction() {
+    echo "A custom function for this type of exception\n";
+  }
 }
