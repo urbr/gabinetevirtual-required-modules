@@ -5,8 +5,8 @@ php = 5.2
 dependencies[] = job_scheduler
 
 ; Information added by drupal.org packaging script on 2012-05-08
-version = "7.x-2.0-alpha3+0-dev"
+version = "7.x-2.0-alpha3"
 core = "7.x"
 project = "job_scheduler"
-datestamp = "1336479746"
+datestamp = "1336466457"
 

@@ -57,7 +57,7 @@ function theme_fb_autopost_facebook_profile($variables) {
  */
 function template_preprocess_fb_autopost_facebook_profile(&$variables) {
   try {
-    $fb = new FBAutopost();
+    $fb = facebook_autopost();
     $fbuser_profile = $fb->api('/' . $variables['fbprofile']['#fbprofile_id'] . '?fields=picture,id,name,link');
     $variables['fbprofile']['#fbprofile_name'] = empty($fbuser_profile['name']) ? $variables['fbprofile']['#fbprofile_id'] : $fbuser_profile['name'];
     $variables['fbprofile']['#fbprofile_link'] = empty($fbuser_profile['link']) ? 'http://facebook.com/' . $variables['fbprofile']['#fbprofile_id'] : $fbuser_profile['link'];

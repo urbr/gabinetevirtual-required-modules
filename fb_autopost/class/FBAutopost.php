@@ -9,7 +9,7 @@ _load_facebook_sdk();
 
 /**
  * API class to handle common actions when autoposting
- * This class uses ErrorException for error handling. Severity is
+ * This class uses FBAutopostException for error handling. Severity is
  * passed resusing watchdog severity (See: http://api.drupal.org/api/drupal/includes%21bootstrap.inc/function/watchdog/7)
  * @see https://developers.facebook.com/docs/howtos/login/server-side-login
  */
@@ -52,6 +52,10 @@ class FBAutopost extends Facebook {
     'photo' => array(
       'name' => 'Photo',
       'endpoint' => 'photos',
+    ),
+    'album' => array(
+      'name' => 'Album',
+      'endpoint' => 'albums',
     ),
     'post' => array(
       'name' => 'Post',
@@ -142,33 +146,33 @@ class FBAutopost extends Facebook {
    *     - 'type': The publication type as defined in $publication_types
    *     - 'params': Associative array with the necessary params for a
    *                 successful FB publication
-   * @param string $page_id
+   * @param $page_id
    *   Page id (among those already selected via UI).
    *   If this is present it will override the parameter destination.
    *   Use 'me' to publish to the user's timeline
    * @return
    *   Facebook id string for the publication. Needed to edit, or delete the publication.
-   * @throws ErrorException
+   * @throws FBAutopostException
    */
-  function publish($publication, string $page_id = NULL) {
+  function publish($publication, $page_id = NULL) {
     // $page_id parameter for backwards compatibility
     if (!is_null($page_id)) {
       $this->setDestination($page_id);
     }
     $page_id = $this->getDestination();
-    // Override publication type if it's present in th$e publication array.
+    // Override publication type if it's present in the publication array.
     if (!empty($publication['type'])) {
       try {
         $this->setType($publication['type']);
       }
-      catch (ErrorException $e) {}
+      catch (FBAutopostException $e) {}
     }
     if (empty($this->type)) {
-      throw new ErrorException(t('The publication array must contain publication type.'), FBAutopost::missing_param, WATCHDOG_ERROR);;
+      throw new FBAutopostException(t('The publication array must contain publication type.'), FBAutopost::missing_param, WATCHDOG_ERROR);
     }
     // Error generation
     if (!isset($publication['params'])) {
-      throw new ErrorException(t('The publication array must contain publication parameters.'), FBAutopost::missing_param, WATCHDOG_ERROR);
+      throw new FBAutopostException(t('The publication array must contain publication parameters.'), FBAutopost::missing_param, WATCHDOG_ERROR);
     }
     $this->checkPagesAvailability();
     // Now we can start the publication.
@@ -188,7 +192,7 @@ class FBAutopost extends Facebook {
           $publication['type'] = $this->getType();
           $session->storePublication($publication);
           $login_url = $this->getLoginUrl(array(
-            'scope' => 'publish_stream',
+            'scope' => fb_permissions_get_facebook_permissions(),
             'redirect_uri' => url('fbautopost/authorization/retry', array('absolute' => TRUE)),
           ));
           // Redirect the user token the login URL that will redirect back to
@@ -205,7 +209,7 @@ class FBAutopost extends Facebook {
         }
       }
       // Throw an exception
-      throw new ErrorException(t('Facebook SDK threw an error: %error', array('%error' => $e)), FBAutopost::sdk_error, WATCHDOG_ERROR);
+      throw new FBAutopostException(t('Facebook SDK threw an error: %error', array('%error' => $e)), FBAutopost::sdk_error, WATCHDOG_ERROR);
     }
   }
 
@@ -260,7 +264,7 @@ class FBAutopost extends Facebook {
    *   A keyed array indexed by page id and containing the values:
    *     - 'id': Facebook page id
    *     - 'access_token': Access token for publishing to the page
-   * @throws ErrorException
+   * @throws FBAutopostException
    */
   private static function getPagesAccessTokens($account_id, $account_access_token) {
     $pages = array();
@@ -281,12 +285,12 @@ class FBAutopost extends Facebook {
    *   Server side access token stored from the admin form.
    * @return
    *   The array from the Graph API call
-   * @throws ErrorException
+   * @throws FBAutopostException
    */
   public function getPagesData($account_id, $account_access_token) {
     // Check if there is an access_token available.
     if (empty($account_access_token)) {
-      throw new ErrorException(t('Cannot ask for user accounts without an access token.'), FBAutopost::missing_param, WATCHDOG_ERROR);
+      throw new FBAutopostException(t('Cannot ask for user accounts without an access token.'), FBAutopost::missing_param, WATCHDOG_ERROR);
     }
     try {
       return $this->api('/' . $account_id . '/accounts', 'GET', array(
@@ -294,8 +298,9 @@ class FBAutopost extends Facebook {
       ));
 
     } catch (FacebookApiException $e) {
-      // Get the FacebookApiException and throw an ordinary ErrorException
-      throw new ErrorException(t('Facebook SDK threw an error: %error It is possible that your Facebook account cannot access the configured pages, if so please log in again in !url.', array('%error' => $e, '!url' => l(t('Facebook autopost configuration page'), 'admin/config/services/fbautopost'))), FBAutopost::sdk_error, WATCHDOG_ERROR);
+      // Get the FacebookApiException and throw an ordinary
+      // FBAutopostException
+      throw new FBAutopostException(t('Facebook SDK threw an error: %error It is possible that your Facebook account cannot access the configured pages, if so please log in again in !url.', array('%error' => $e, '!url' => l(t('Facebook autopost configuration page'), 'admin/config/services/fbautopost'))), FBAutopost::sdk_error, WATCHDOG_ERROR);
     }
   }
 
@@ -375,12 +380,12 @@ class FBAutopost extends Facebook {
    *     - SELF
    * @return
    *   Returns itself.
-   * @throws ErrorException
+   * @throws FBAutopostException
    * @see https://developers.facebook.com/docs/reference/api/privacy-parameter
    */
   public function setPrivacy($privacy_code) {
     if (!in_array($privacy_code, array('ALL_FRIENDS', 'EVERYONE', 'SELF', 'FRIENDS_OF_FRIENDS'))) {
-      throw new ErrorException(t('The privacy code you specified is invalid.'), FBAutopost::incorrect_param, WATCHDOG_ERROR);
+      throw new FBAutopostException(t('The privacy code you specified is invalid.'), FBAutopost::incorrect_param, WATCHDOG_ERROR);
     }
     $this->privacy = $privacy_code;
     return $this;
@@ -409,7 +414,7 @@ class FBAutopost extends Facebook {
    */
   public function setType($type) {
     if (!in_array($type, array_keys($this->publication_types))) {
-      throw new ErrorException(t('The publication type you specified is invalid.'), FBAutopost::incorrect_param, WATCHDOG_ERROR);
+      throw new FBAutopostException(t('The publication type you specified is invalid.'), FBAutopost::incorrect_param, WATCHDOG_ERROR);
     }
     $this->type = $type;
     return $this;
@@ -436,7 +441,7 @@ class FBAutopost extends Facebook {
     $pages = self::getPagesAccessTokens(variable_get('fb_autopost_account_id', 'me'), variable_get('fb_autopost_token', ''));
     // Check that the selected page is in the available list.
     if (!in_array($page_id, array_keys($pages)) && $page_id != 'me') {
-      throw new ErrorException(t('Insufficient permissions to publish on page with id @id. Please check !config.', array('@id' => $page_id, '!config' => l(t('your configuration'), 'admin/config/services/fbautopost'))), FBAutopost::incorrect_param, WATCHDOG_ERROR);
+      throw new FBAutopostException(t('Insufficient permissions to publish on page with id @id. Please check !config.', array('@id' => $page_id, '!config' => l(t('your configuration'), 'admin/config/services/fbautopost'))), FBAutopost::incorrect_param, WATCHDOG_ERROR);
     }
   }
   

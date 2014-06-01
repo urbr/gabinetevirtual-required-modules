@@ -13,8 +13,8 @@ class FBAutopostEntityPhoto extends FBAutopostEntity {
    * Prepares the parameters to publish to Facebook, this means settings any
    * field or destination dependent configuration.
    */
-  protected function publishParameterPrepare(&$publication, $destination) {
-    parent::publishParameterPrepare($publication, $destination);
+  protected function publishParameterPrepare(&$publication) {
+    parent::publishParameterPrepare($publication);
     // Add facebook support for uploading files
     $this->setFileUploadSupport(true);
     // Add @ in front of upload URL

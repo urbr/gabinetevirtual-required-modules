@@ -45,7 +45,7 @@ function fb_autopost_global_settings($form, &$form_state) {
 
     try {
       // Create the FBAutpost object with the stored data.
-      $fb = new FBAutopost();
+      $fb = facebook_autopost();
       if ($fb_user = $fb->getUser()) {
         // If there is a connected account, get all FB pages related to that
         // account. Make these pages the values of a select.
@@ -59,7 +59,7 @@ function fb_autopost_global_settings($form, &$form_state) {
           $form['page_info']['fb_autopost_page'] = array(
             '#type' => 'checkboxes',
             '#title' => t('Pages'),
-            '#description' => t('Select the Facebook page you want to post to.'),
+            '#description' => t('Select the Facebook pages you want to make available to post to.'),
             '#options' => _fb_autopost_get_page_options($pages_data),
             '#default_value' => variable_get('fb_autopost_page', array()),
           );
@@ -86,7 +86,7 @@ function fb_autopost_global_settings($form, &$form_state) {
           '#type' => 'link',
           '#title' => t('Login to Facebook'),
           '#href' => $fb->getLoginUrl(array(
-            'scope' => 'publish_stream,manage_pages',
+            'scope' => fb_permissions_get_facebook_permissions(array('manage_pages', 'publish_stream')),
             'redirect_uri' => url('admin/config/services/fbautopost/login', array('absolute' => TRUE)),
           )),
         );
@@ -117,11 +117,11 @@ function fb_autopost_global_settings_submit($form, &$form_state) {
 
 /**
  * Helper function to get all the available pages.
- * 
+ *
  * @param array $pages_data
  *   An array containig the Facebook information about the page as returned
  *   from FBAutopost::getPagesData(…).
- * 
+ *
  * @return array
  *   Array containing an options friendly array with all writable pages
  */

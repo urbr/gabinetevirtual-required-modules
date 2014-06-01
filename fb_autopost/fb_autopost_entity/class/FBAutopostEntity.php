@@ -14,20 +14,24 @@ class FBAutopostEntity extends FBAutopost {
    *
    * @param FacebookPublicationEntity $publication
    *   The fully loaded Facebook publication entity.
+   * @param string $page_id
+   *   Page id (among those already selected via UI).
+   *   If this is present it will override the parameter destination.
+   *   Use 'me' to publish to the user's timeline
    * 
    * @return string
    *   Facebook id string for the publication. Needed to edit, or delete the
    *   publication.
    * 
-   * @throws ErrorException
+   * @throws FBAutopostException
    * @see FBAutopost::publish()
    */
-  public function publish(FacebookPublicationEntity $publication) {
+  public function publishEntity(FacebookPublicationEntity $publication, string $page_id = NULL) {
     // Invoke FBAutopost::publish() with the parameters from $publication.
     return parent::publish(array(
       'type' => $publication->type,
       'params' => fb_autopost_entity_get_properties($publication),
-    ));
+    ), $page_id);
   }
 
   /**
@@ -39,10 +43,10 @@ class FBAutopostEntity extends FBAutopost {
    * @return boolean
    *   TRUE if the publication was deleted successfully.
    * 
-   * @throws ErrorException
+   * @throws FBAutopostException
    * @see FBAutopost::remoteDelete()
    */
-  public function remoteDelete(FacebookPublicationEntity $publication) {
+  public function remoteEntityDelete(FacebookPublicationEntity $publication) {
     // Get a wrapper for the entity and extract the remote ID.
     $wrapper = entity_metadata_wrapper('facebook_publication', $publication);
     $remote_id = $wrapper->facebook_id->value();
@@ -52,7 +56,7 @@ class FBAutopostEntity extends FBAutopost {
       return parent::remoteDelete($remote_id);
     }
     else {
-      throw new ErrorException(t('Remote ID could not be found.'), FBAutopost::missing_param, WATCHDOG_ERROR);
+      throw new FBAutopostException(t('Remote ID could not be found.'), FBAutopost::missing_param, WATCHDOG_ERROR);
     }
   }
 
@@ -62,14 +66,14 @@ class FBAutopostEntity extends FBAutopost {
    * @param FacebookPublicationEntity $publication
    *   The fully loaded Facebook publication entity
    * 
-   * @throws ErrorException
+   * @throws FBAutopostException
    * @see FBAutopost::remoteEdit()
    */
-  public function remoteEdit(FacebookPublicationEntity $publication) {
+  public function remoteEntityEdit(FacebookPublicationEntity $publication) {
     // In this case, edit means delete + publish. This has the side effect that
     // the ID is not preserved.
-    if ($this->remoteDelete($publication)) {
-      return $this->publish($publication);
+    if ($this->remoteEntityDelete($publication)) {
+      return $this->publishEntity($publication);
     }
   }
 }

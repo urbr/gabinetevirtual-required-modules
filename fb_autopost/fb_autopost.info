@@ -5,15 +5,20 @@ core = 7.x
 configure = admin/config/services/fbautopost
 php = 5.3
 
+dependencies[] = fb_permissions
 dependencies[] = libraries
+dependencies[] = entity
 
 files[] = class/FBAutopost.php
+files[] = class/FBAutopostException.php
 files[] = class/FBAutopostPhoto.php
+files[] = class/FBAutopostEvent.php
+files[] = class/FBAutopostPost.php
 files[] = class/FBSession.php
 
-; Information added by drupal.org packaging script on 2013-02-17
-version = "7.x-1.0-beta1"
+; Information added by Drupal.org packaging script on 2014-05-15
+version = "7.x-1.2"
 core = "7.x"
 project = "fb_autopost"
-datestamp = "1361062067"
+datestamp = "1400138934"
 

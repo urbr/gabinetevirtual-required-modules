@@ -66,20 +66,20 @@ function feeds_import_form($form, &$form_state, $importer_id) {
   if (!empty($source_form)) {
     $form['feeds'] = array(
       '#type' => 'fieldset',
-      '#title' => t('Importar'),
+      '#title' => t('Import'),
       '#tree' => TRUE,
     ) + $source_form;
   }
 
   $form['submit'] = array(
     '#type' => 'submit',
-    '#value' => t('Importar'),
+    '#value' => t('Import'),
   );
   $progress = $source->progressImporting();
   if ($progress !== FEEDS_BATCH_COMPLETE) {
     $form['submit']['#disabled'] = TRUE;
     $form['submit']['#value'] =
-      t('Importando (@progress %)', array('@progress' => number_format(100 * $progress, 0)));
+      t('Importing (@progress %)', array('@progress' => number_format(100 * $progress, 0)));
   }
   return $form;
 }
@@ -306,21 +306,21 @@ function theme_feeds_source_status($v) {
   $items = array();
   if ($v['progress_importing']) {
     $progress = number_format(100.0 * $v['progress_importing'], 0);
-    $items[] = t('Importando - @progress % completo.', array('@progress' => $progress));
+    $items[] = t('Importing - @progress % complete.', array('@progress' => $progress));
   }
   if ($v['progress_clearing']) {
     $progress = number_format(100.0 * $v['progress_clearing'], 0);
-    $items[] = t('Deletando itens - @progress % completo.', array('@progress' => $progress));
+    $items[] = t('Deleting items - @progress % complete.', array('@progress' => $progress));
   }
   if (!count($items)) {
     if ($v['count']) {
       if ($v['imported']) {
-        $items[] = t('Ultima importação: @ago atrás.', array('@ago' => format_interval(REQUEST_TIME - $v['imported'], 1)));
+        $items[] = t('Last import: @ago ago.', array('@ago' => format_interval(REQUEST_TIME - $v['imported'], 1)));
       }
-      $items[] = t('Total de itens importados: @count', array('@count' => $v['count']));
+      $items[] = t('@count imported items total.', array('@count' => $v['count']));
     }
     else {
-      $items[] = t('Nenhum item importado');
+      $items[] = t('No imported items.');
     }
   }
   $output .= theme('item_list', array('items' => $items));
@@ -341,7 +341,12 @@ function theme_feeds_upload($variables) {
     $wrapper = file_stream_wrapper_get_instance_by_uri($file->uri);
     $description .= '<div class="file-info">';
     $description .= '<div class="file-name">';
-    $description .= l($file->filename, $wrapper->getExternalUrl());
+    if ($wrapper) {
+      $description .= l($file->filename, $wrapper->getExternalUrl());
+    }
+    else {
+      $description .= t('URI scheme %scheme not available.', array('%scheme' =>  file_uri_scheme($uri)));
+    }
     $description .= '</div>';
     $description .= '<div class="file-size">';
     $description .= format_size($file->filesize);

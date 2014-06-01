@@ -115,10 +115,11 @@ function drupalchat_schema() {
         'unsigned' => TRUE,
       ),
     ),
-    /*'primary key' => array('uid', 'session'),*/
+    'primary key' => array('uid', 'session'),
 	'indexes' => array(
       'uid' => array('uid'),
       'session' => array('session'),
+	  'timestamp' => array('timestamp'),
     ),
   );
 
@@ -143,17 +144,27 @@ function drupalchat_update_7000() {
         'length' => 32,
         'not null' => TRUE,
     ));
-  db_add_index('drupalchat_msg','uid1',array('uid1'));
-  db_add_index('drupalchat_msg','uid2',array('uid2'));
-  db_add_index('drupalchat_users','uid',array('uid'));
-  db_add_index('drupalchat_users','session',array('session'));
+  if (!db_index_exists('drupalchat_msg','uid1')) {
+    db_add_index('drupalchat_msg','uid1',array('uid1'));
+  }
+  if (!db_index_exists('drupalchat_msg','uid2')) {
+    db_add_index('drupalchat_msg','uid2',array('uid2'));
+  }
+  if (!db_index_exists('drupalchat_users','uid')) {
+    db_add_index('drupalchat_users','uid',array('uid'));
+  }
+  if (!db_index_exists('drupalchat_users','session')) {
+    db_add_index('drupalchat_users','session',array('session'));
+  }
 }
 
 function drupalchat_update_7001() {
-  db_add_field('drupalchat_msg', 'message_id', array(
+  if(!db_field_exists('drupalchat_msg', 'message_id')) {
+    db_add_field('drupalchat_msg', 'message_id', array(
         'type' => 'varchar',
         'length' => 50,
         'not null' => TRUE,
         'description' => 'ID of chat message.',
       ));
+  }
 }

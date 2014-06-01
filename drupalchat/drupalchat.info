@@ -10,9 +10,9 @@ files[] = drupalchat.admin.inc
 files[] = drupalchat.install
 files[] = drupalchat.module
 files[] = drupalchat.tpl.php
-; Information added by drupal.org packaging script on 2013-03-19
-version = "7.x-1.0-beta14"
+; Information added by Drupal.org packaging script on 2014-05-28
+version = "7.x-1.0-beta33"
 core = "7.x"
 project = "drupalchat"
-datestamp = "1363700249"
+datestamp = "1401280428"
 

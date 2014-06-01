@@ -91,3 +91,10 @@ function fb_autopost_update_7100(&$sandbox) {
   variable_del('fb_autopos_app_id');
   variable_del('fb_autopos_app_secret');
 }
+
+/**
+ * Enable the new dependency.
+ */
+function fb_autopost_update_7101(&$sandbox) {
+  module_enable(array('fb_permissions'));
+}

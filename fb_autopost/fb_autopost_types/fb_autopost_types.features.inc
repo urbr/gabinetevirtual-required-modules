@@ -9,6 +9,14 @@
  */
 function fb_autopost_types_default_facebook_publication_type() {
   $items = array();
+  $items['album'] = entity_import('facebook_publication_type', '{
+    "type" : "album",
+    "label" : "Album",
+    "weight" : "0",
+    "description" : "",
+    "data" : null,
+    "rdf_mapping" : []
+  }');
   $items['event'] = entity_import('facebook_publication_type', '{
     "type" : "event",
     "label" : "Event",

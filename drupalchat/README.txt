@@ -6,24 +6,24 @@ new tab in the chat bar along with an attached pop-up chat window.
 REQUIREMENTS
 ============
 - This module is written for Drupal 7.x.
-- You need to download the latest stable release of the YUI library from http://developer.yahoo.com/yui/3/ and extract the entire folder into sites/all/libraries.
+- Session API (optional) - if you want to use DrupalChat for anonymous users, then you need to install and enable this module.
+- User Relationships (optional) - if you want to integrate DrupalChat with this module.
 
 INSTALLATION
 ============
 
-1. Download the module from Drupal.org/project/drupalchat and save it to your
+1. Download the module from drupal.org/project/drupalchat and save it to your
    modules folder.
-2. Enable the DrupalChat module at admin/build/modules.
-3. Set the access drupalchat permissions for authenticated users at
-   admin/user/permissions.
+2. Enable the DrupalChat module at admin/modules.
+3. Set the Access DrupalChat permission for authenticated users at
+   admin/people/permissions.
 
 INTEGRATION WITH USER RELATIONSHIPS
 ===================================
 1. Enable the DrupalChat UR Integration module.
-2. Go to the admin/settings/drupalchat and fill in the required details after
+2. Go to the admin/config/drupalchat/configuration and fill in the required details after
    configuring up the User Relationships module.
 
 ADMINISTER THE DRUPALCHAT MODULE
 =================================
-Go to admin/settings/drupalchat. The long polling technique can be activated at
-this page instead of default Normal AJAX technique.
+Go to admin/settings/admin/config/drupalchat/configuration.

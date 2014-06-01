@@ -6,7 +6,7 @@
  */
 
 /**
- * Implements hook_uninstall().
+ * Implements hook_install().
  */
 function composer_manager_install() {
   // @see composer_manager_beta5_compatibility()
@@ -28,7 +28,7 @@ function composer_manager_uninstall() {
  */
 function composer_manager_requirements($phase) {
   if ('runtime' != $phase) {
-    return;
+    return array();
   }
 
   $t = get_t();

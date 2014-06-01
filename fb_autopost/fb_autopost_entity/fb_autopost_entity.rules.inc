@@ -70,7 +70,7 @@ function fb_autopost_entity_rules_action_info() {
       'publication_id' => array(
         'type' => 'facebook_publication',
         'label' => t('Target Facebook publication entity'),
-        'description' => t('The ID returned from Facebook when creating the publication. Typically stored in the facebook_id property of your FacebookPublicationEntity.'),
+        'description' => t('The publication entity you want to edit. The ID returned from Facebook when creating the publication must be present on the entity for this action to work'),
       ),
       'privacy' => array(
         'type' => 'text',
@@ -139,7 +139,7 @@ function fb_autopost_entity_available_facebook_pages() {
   module_load_include('inc', 'fb_autopost', 'fb_autopost.admin');
   $available = array_values(array_filter(variable_get('fb_autopost_page', array())));
   try {
-    $fb = new FBAutopost();
+    $fb = facebook_autopost();
     $pages_data = $fb->getPagesData(variable_get('fb_autopost_account_id', 'me'), variable_get('fb_autopost_token', ''));
     $options = _fb_autopost_get_page_options($pages_data);
     $output = array();
@@ -151,7 +151,7 @@ function fb_autopost_entity_available_facebook_pages() {
     return $output;
   }
   catch (Exception $e) {
-    watchdog('fb_autopost', $e->getMessage(), array(), WATCHDOG_ERROR);
+    watchdog_exception('fb_autopost', $e);
     drupal_set_message($e->getMessage(), 'error');
   }
 }
@@ -171,11 +171,11 @@ function available_facebook_destinations() {
 function rules_action_publish_to_facebook(FacebookPublicationEntity $publication, $pages) {
   try {
     $fb = facebook_autopost_entity($publication->type);
-    $facebook_returned_id = $fb->setDestination($pages)->publish($publication);
+    $facebook_returned_id = $fb->setDestination($pages)->publishEntity($publication);
     return array('facebook_publication_id' => $facebook_returned_id['id']);
   }
   catch (Exception $e) {
-    watchdog('fb_autopost', $e->getMessage(), array(), WATCHDOG_ERROR);
+    watchdog_exception('fb_autopost', $e);
     drupal_set_message($e->getMessage(), 'error');
   }
 }
@@ -189,11 +189,11 @@ function rules_action_publish_to_facebook_timeline(FacebookPublicationEntity $pu
     $facebook_returned_id = $fb->setDestination('me')
         ->setPrivacy($privacy)
         ->setRetry($retry)
-        ->publish($publication);
+        ->publishEntity($publication);
     return array('facebook_publication_id' => $facebook_returned_id['id']);
   }
   catch (Exception $e) {
-    watchdog('fb_autopost', $e->getMessage(), array(), WATCHDOG_ERROR);
+    watchdog_exception('fb_autopost', $e);
     drupal_set_message($e->getMessage(), 'error');
   }
 }
@@ -204,10 +204,10 @@ function rules_action_publish_to_facebook_timeline(FacebookPublicationEntity $pu
 function rules_action_delete_from_facebook(FacebookPublicationEntity $publication) {
   try {
     $fb = facebook_autopost_entity($publication->type);
-    $fb->remoteDelete($publication);
+    $fb->remoteEntityDelete($publication);
   }
   catch (Exception $e) {
-    watchdog('fb_autopost', $e->getMessage(), array(), WATCHDOG_ERROR);
+    watchdog_exception('fb_autopost', $e);
     drupal_set_message($e->getMessage(), 'error');
   }
 }
@@ -225,11 +225,11 @@ function rules_action_edit_in_facebook(FacebookPublicationEntity $publication, $
     }
     $facebook_returned_id = $fb
       ->setDestination($destination)
-      ->remoteEdit($publication);
+      ->remoteEntityEdit($publication);
     return array('facebook_publication_id' => $facebook_returned_id['id']);
   }
   catch (Exception $e) {
-    watchdog('fb_autopost', $e->getMessage(), array(), WATCHDOG_ERROR);
+    watchdog_exception('fb_autopost', $e);
     drupal_set_message($e->getMessage(), 'error');
   }
 }

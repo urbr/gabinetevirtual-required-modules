@@ -102,7 +102,7 @@ function fb_autopost_facebook_login() {
   }
   else {
     try {
-      $fb = new FBAutopost();
+      $fb = facebook_autopost();
       if ($fb_user = $fb->getUser()) {
         $token = $fb->getAccessToken();
         variable_set('fb_autopost_token', $token);
@@ -123,7 +123,7 @@ function fb_autopost_facebook_login() {
  */
 function fb_autopost_facebook_logout() {
   try {
-    $fb = new FBAutopost();
+    $fb = facebook_autopost();
     // Invalidate access_token
     $fb->api('/' . variable_get('fb_autopost_account_id', 'me') . '/permissions', 'DELETE');
   }
@@ -156,7 +156,7 @@ function fb_autopost_authorization_retry() {
     // session gets regenerated.
     $session = new FBSession();
     $session->removePublication();
-    watchdog('fb_autopost', $e->getMessage(), array(), WATCHDOG_ERROR);
+    watchdog_exception('fb_autopost', $e);
     drupal_set_message($e->getMessage(), 'error');
   }
   // This method does not throw anything.
@@ -209,7 +209,7 @@ function _load_facebook_sdk($basename = NULL) {
     else {
       // The user cannot see the site reports with further instructions
       // throw an Exception.
-      throw new Exception(t('Facebook Autopost could not be started because the Facebook PHP library is missing. Please contact system administration to communicate this error.'));
+      throw new FBAutopostException(t('Facebook Autopost could not be started because the Facebook PHP library is missing. Please contact system administration to communicate this error.'));
     }
   }
   else {
@@ -250,16 +250,36 @@ function fb_autopost_session($op = 'view') {
 
 /**
  * Factory function.
+ *
+ * Add here the classes that need to override methods from FBAutopost.
+ *
+ * @param string $type
+ *   The type of Facebook publication to return. Use NULL to not specify a type.
  */
-function facebook_autopost($type) {
+function facebook_autopost($type = NULL) {
   switch ($type) {
     case 'photo':
       $fb = new FBAutopostPhoto();
+      break;
+
+    case 'event':
+      $fb = new FBAutopostEvent();
+      break;
+
+    case 'post':
+      $fb = new FBAutopostPost();
       break;
 
     default:
       $fb = new FBAutopost();
       break;
   }
-  return $fb->setType($type);
+  if ($type) {
+    $fb->setType($type);
+  }
+  // Allow other modules to alter $fb.Useful for altering the underlying
+  // BaseFacebook object for things like adding proxy support to curl options
+  drupal_alter('facebook_autopost_fb', $fb);
+
+  return $fb;
 }

@@ -362,7 +362,8 @@ function facebook_publication_type_access($op, $type = NULL, $account = NULL) {
  * Renders a FacebookPublicationEntity.
  */
 function facebook_publication_view(FacebookPublicationEntity $publication) {
-  return reset(entity_view('facebook_publication', array($publication)));
+  $entities = entity_view('facebook_publication', array($publication));
+  return reset($entities);
 }
 
 /**
@@ -620,6 +621,12 @@ function facebook_autopost_entity($type) {
   switch ($type) {
     case 'photo':
       return new FBAutopostEntityPhoto();
+
+    case 'event':
+      return new FBAutopostEntityEvent();
+
+    case 'post':
+      return new FBAutopostEntityPost();
 
     default:
       return new FBAutopostEntity();
