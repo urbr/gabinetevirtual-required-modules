@@ -1,0 +1,8 @@
+name = Tree Files
+description = Módulo para gerenciamento de arquivos e pastas
+package = "Gabinete Virtual"
+core = 7.x
+php = 5.3
+
+version = "7.x"
+project = "Gabinete Virtual"

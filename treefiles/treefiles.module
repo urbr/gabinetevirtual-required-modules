@@ -1,0 +1,174 @@
+<?php
+
+/**
+ * @description
+ *       Módulo para gerenciamento de arquivos e pastas
+ * 
+ * @package       Oficina de Criação
+ * @copyright     Copyright (c) 2014, Urucum Brasil
+ * 
+ * @author        Fellipe Vasconcelos
+ */
+
+# Implements hook_help()
+function treefiles_help($path, $arg) {
+	if ($path == 'admin/help#treefiles') {
+		return t('Módulo Tree Files.');
+	}
+}
+
+# Implements hook_menu()
+function treefiles_menu() {
+
+	$items = array();
+	$path  = drupal_get_path('module', 'treefiles').'/pages';
+
+  	$items['tree/add/file'] = array(
+		'title' => 'Adicionar Arquivos',
+		'page callback' => 'drupal_get_form',
+        'access arguments' => array('administer_treefiles'),
+        'description' => 'Adicionar Arquivos',
+        'file' => 'treefiles.pages.inc',
+        'file path' => $path,
+        'menu_name' => 'main-menu',
+        'type' => MENU_CALLBACK,
+        'expanded' => TRUE,
+		'page arguments' => array('files_form'),
+  	);
+
+    $items['tree/file/edit'] = array(
+        'title' => 'Atualizar Arquivo',
+        'page callback' => 'drupal_get_form',
+        'access arguments' => array('administer_treefiles'),
+        'description' => 'Atualizar Arquivo',
+        'file' => 'treefiles.pages.inc',
+        'file path' => $path,
+        'menu_name' => 'main-menu',
+        'type' => MENU_CALLBACK,
+        'expanded' => TRUE,
+        'page arguments' => array('file_update_form'),
+    );
+
+    $items['tree/directory/edit'] = array(
+        'title' => 'Atualizar Diretório',
+        'page callback' => 'drupal_get_form',
+        'access arguments' => array('administer_treefiles'),
+        'description' => 'Atualizar Diretório',
+        'file' => 'treefiles.pages.inc',
+        'file path' => $path,
+        'menu_name' => 'main-menu',
+        'type' => MENU_CALLBACK,
+        'expanded' => TRUE,
+        'page arguments' => array('directory_update_form'),
+    );
+
+    $items['tree/file/delete'] = array(
+        'title' => 'Excluir Arquivo',
+        'page callback' => 'drupal_get_form',
+        'access arguments' => array('administer_treefiles'),
+        'description' => 'Excluir Arquivo',
+        'file' => 'treefiles.pages.inc',
+        'file path' => $path,
+        'menu_name' => 'main-menu',
+        'type' => MENU_CALLBACK,
+        'expanded' => TRUE,
+        'page arguments' => array('file_delete_form'),
+    );
+
+    $items['tree/add/directory'] = array(
+        'title' => 'Adicionar Pasta',
+        'page callback' => 'drupal_get_form',
+        'access arguments' => array('administer_treefiles'),
+        'description' => 'Adicionar Pasta',
+        'file' => 'treefiles.pages.inc',
+        'file path' => $path,
+        'menu_name' => 'main-menu',
+        'type' => MENU_CALLBACK,
+        'expanded' => TRUE,
+        'page arguments' => array('paste_form'),
+    );
+
+    $items['tree/info/file/%'] = array(
+        'title' => 'Arquivo',
+        'page callback' => 'files_info_view',
+        'page arguments' => array(3),
+        'access arguments' => array('access_treefiles'),
+        'description' => 'Arquivo',
+        'file' => 'treefiles.pages.inc',
+        'file path' => $path,
+        'menu_name' => 'main-menu',
+        'type' => MENU_CALLBACK,
+        'expanded' => TRUE,
+    );
+
+    $items['tree/info/directory/%'] = array(
+        'title' => 'Pasta',
+        'page callback' => 'directory_file_view',
+		'page arguments' => array(3),
+        'access arguments' => array('access_treefiles'),
+        'description' => 'Pasta',
+        'file' => 'treefiles.pages.inc',
+        'file path' => $path,
+        'menu_name' => 'main-menu',
+        'type' => MENU_CALLBACK,
+        'expanded' => TRUE,
+    );
+
+    $items['tree'] = array(
+        'title' => 'Arquivos',
+        'page callback' => 'files_view',
+        'access arguments' => array('access_treefiles'),
+        'description' => 'Arquivos',
+        'file' => 'treefiles.pages.inc',
+        'file path' => $path,
+        'menu_name' => 'main-menu',
+        'type' => MENU_CALLBACK,
+        'expanded' => TRUE,
+    );
+
+    return $items;
+}
+
+# Implements hook_permission
+function treefiles_permission() {
+	return array(
+		'administer_treefiles' => array(
+			'title' => t('Administrador de arquivos e diretórios'),
+		),
+		'access_treefiles' => array(
+			'title' => t('Usuário Anônimo'),
+		),
+	);
+}
+
+# Implements hook_theme
+function treefiles_theme(){
+
+	$path_module = drupal_get_path('module', 'treefiles').'/themes';
+    $path_theme  = drupal_get_path('module', 'workshop').'/theme';
+
+	return array(
+       'files_admin' => array(
+          'template' => 'files_page',
+          'variables' => array('title' => NULL, 'mode' => 'default', 'ids' => NULL, 'tipo' => NULL, 
+		  	'nome' => NULL, 'tamanho' => NULL, 'atualizacao' => NULL, 'pid' => NULL, 'descricao' => NULL),
+          'path' => $path_module
+       ),
+       'files_info_admin' => array(
+          'template' => 'files_info_page',
+          'variables' => array('file' => NULL, 'title' => NULL),
+          'path' => $path_module
+       ),
+       'files_user' => array(
+          'template' => 'files_page',
+          'variables' => array('title' => NULL, 'mode' => 'default', 'ids' => NULL, 'tipo' => NULL, 
+            'nome' => NULL, 'tamanho' => NULL, 'atualizacao' => NULL, 'pid' => NULL, 'descricao' => NULL),
+          'path' => $path_theme
+       ),
+       'files_info_user' => array(
+          'template' => 'files_info_page',
+          'variables' => array('file' => NULL, 'title' => NULL),
+          'path' => $path_theme
+       ),
+	);
+}

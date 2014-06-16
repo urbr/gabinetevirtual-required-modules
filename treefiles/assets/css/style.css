@@ -1,0 +1,11 @@
+th.list-table, th.list-table-narrow, .list-table th {
+	border-bottom:3px solid #CCC;
+}	
+	
+td.list-table, td.list-table-narrow, .list-table td {
+	border-color:#CCC;
+}	
+	
+table.list-table {
+	border:1px solid #EEE;
+}

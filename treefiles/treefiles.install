@@ -1,0 +1,116 @@
+<?php
+
+/**
+* @author Fellipe Vasconcelos - Urucum Brasil
+*/
+
+/**
+ * Implements hook_schema().
+ */
+function treefiles_schema() {
+
+  $schema['tb_directory'] = array(
+   'description' => 'Tabela de pastas',
+   'fields' => array(
+      'id' => array(
+        'description' => 'Identificador primário da tabela',
+        'type' => 'serial',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+      ),
+      'title' => array ( 
+        'description' => 'Título da pasta',
+        'type' => 'text',
+      ),
+      'description' => array (
+        'description' => 'Descrição da pasta',
+        'type' => 'text',
+      ),
+      'created' => array (
+        'description' => 'Data de criação',
+        'type' => 'int',
+        'unsigned' => TRUE,
+      ),
+      'pid_ref' => array (
+        'description' => 'ID de referencia da pasta',
+        'type' => 'int',
+        'unsigned' => TRUE,
+      ),
+      'uri' => array (
+        'description' => 'URI Drupal',
+        'type' => 'text',
+      ),
+    ),
+   'primary key' => array('id'),
+  );
+
+  $schema['tb_file'] = array(
+   'description' => 'Tabela de arquivos',
+   'fields' => array(
+      'id' => array(
+        'description' => 'Identificador primário da tabela',
+        'type' => 'serial',
+        'unsigned' => TRUE,
+      ),
+      'title' => array (
+        'description' => 'Título',
+        'type' => 'text',
+      ),
+      'description' => array (
+        'description' => 'Descrição',
+        'type' => 'text',
+      ),
+      'fid' => array (
+        'description' => 'File ID',
+        'type' => 'int',
+        'unsigned' => TRUE,
+      ),
+      'updated' => array (
+        'description' => 'Data de atualização',
+        'type' => 'int',
+        'unsigned' => TRUE,
+      ),
+    ),
+   'primary key' => array('id'),
+  );
+
+  $schema['tb_directory_file'] = array(
+   'description' => 'Tabela de relacionamento diretorio - arquivos',
+   'fields' => array(
+      'id' => array(
+        'description' => 'Identificador primário da tabela',
+        'type' => 'serial',
+        'unsigned' => TRUE,
+      ),
+      'fid' => array (
+        'description' => 'File ID',
+        'type' => 'int',
+        'unsigned' => TRUE,
+      ),
+      'pid' => array (
+        'description' => 'ID da pasta',
+        'type' => 'int',
+        'unsigned' => TRUE,
+      ),
+    ),
+   'primary key' => array('id'),
+  );
+
+  return $schema;
+}
+
+/**
+ * Implements hook_install().
+ */
+function treefiles_install()
+{
+
+}
+
+/**
+ * Implements hook_uninstall().
+ */
+function treefiles_uninstall()
+{
+
+}
