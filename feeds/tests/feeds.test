@@ -188,8 +188,6 @@ class FeedsWebTestCase extends DrupalWebTestCase {
     $this->assertPlugins($id, 'FeedsHTTPFetcher', 'FeedsSyndicationParser', 'FeedsNodeProcessor');
     // Per default attach to page content type.
     $this->setSettings($id, NULL, array('content_type' => 'page'));
-    // Per default attached to article content type.
-    $this->setSettings($id, 'FeedsNodeProcessor', array('bundle' => 'article'));
   }
 
   /**
@@ -409,7 +407,7 @@ class FeedsWebTestCase extends DrupalWebTestCase {
       $mapping = array('source' => $mapping['source'], 'target' => $mapping['target']);
 
       // Add mapping.
-      $this->drupalPost($path, $mapping, t('Save'));
+      $this->drupalPost($path, $mapping, t('Add'));
 
       // If there are other configuration options, set them.
       if ($config) {
@@ -433,6 +431,8 @@ class FeedsWebTestCase extends DrupalWebTestCase {
 
   /**
    * Remove mappings from a given configuration.
+   *
+   * This function mimicks the Javascript behavior in feeds_ui.js
    *
    * @param array $mappings
    *   An array of mapping arrays. Each mapping array must have a source and

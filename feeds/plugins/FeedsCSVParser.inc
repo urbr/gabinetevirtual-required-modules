@@ -123,29 +123,18 @@ class FeedsCSVParser extends FeedsParser {
     $sources = $uniques = array();
     foreach ($mappings as $mapping) {
       $sources[] = check_plain($mapping['source']);
-      if (!empty($mapping['unique'])) {
+      if ($mapping['unique']) {
         $uniques[] = check_plain($mapping['source']);
       }
     }
 
-    $output = t('Import !csv_files with one or more of these columns: !columns.', array('!csv_files' => l(t('CSV files'), 'http://en.wikipedia.org/wiki/Comma-separated_values'), '!columns' => implode(', ', $sources)));
+    //$output = t('Import !csv_files with one or more of these columns: !columns.', array('!csv_files' => l(t('CSV files'), 'http://en.wikipedia.org/wiki/Comma-separated_values'), '!columns' => implode(', ', $sources)));
     $items = array();
-    $items[] = format_plural(count($uniques), t('Column <strong>!column</strong> is mandatory and considered unique: only one item per !column value will be created.', array('!column' => implode(', ', $uniques))), t('Columns <strong>!columns</strong> are mandatory and values in these columns are considered unique: only one entry per value in one of these column will be created.', array('!columns' => implode(', ', $uniques))));
-    $items[] = l(t('Download a template'), 'import/' . $this->id . '/template');
-    $form['help'] = array(
-      '#prefix' => '<div class="help">',
-      '#suffix' => '</div>',
-      'description' => array(
-        '#prefix' => '<p>',
-        '#markup' => $output,
-        '#suffix' => '</p>',
-      ),
-      'list' => array(
-        '#theme' => 'item_list',
-        '#items' => $items,
-      ),
-    );
-    $form['delimiter'] = array(
+    //$items[] = format_plural(count($uniques), t('Column <strong>!column</strong> is mandatory and considered unique: only one item per !column value will be created.', array('!column' => implode(', ', $uniques))), t('Columns <strong>!columns</strong> are mandatory and values in these columns are considered unique: only one entry per value in one of these column will be created.', array('!columns' => implode(', ', $uniques))));
+    $items[] = l(t('Baixar o template'), 'import/' . $this->id . '/template');
+    $output = (empty($output)) ? "" : $output;
+    $form['help']['#markup'] = '<div class="help"><p>' . $output . '</p>' . theme('item_list', array('items' => $items)) . '</div>';
+    /*$form['delimiter'] = array(
       '#type' => 'select',
       '#title' => t('Delimiter'),
       '#description' => t('The character that delimits fields in the CSV file.'),
@@ -153,15 +142,22 @@ class FeedsCSVParser extends FeedsParser {
         ',' => ',',
         ';' => ';',
         'TAB' => 'TAB',
-        '|' => '|',
-        '+' => '+',
       ),
       '#default_value' => isset($source_config['delimiter']) ? $source_config['delimiter'] : ',',
+    );*/
+    $form['delimiter'] = array(
+      '#type' => 'hidden',
+      '#default_value' => isset($source_config['delimiter']) ? $source_config['delimiter'] : ',',
     );
+    /*
     $form['no_headers'] = array(
       '#type' => 'checkbox',
       '#title' => t('No Headers'),
       '#description' => t('Check if the imported CSV file does not start with a header row. If checked, mapping sources must be named \'0\', \'1\', \'2\' etc.'),
+      '#default_value' => isset($source_config['no_headers']) ? $source_config['no_headers'] : 0,
+    );*/
+    $form['no_headers'] = array(
+      '#type' => 'hidden',
       '#default_value' => isset($source_config['no_headers']) ? $source_config['no_headers'] : 0,
     );
     return $form;
@@ -190,8 +186,6 @@ class FeedsCSVParser extends FeedsParser {
         ',' => ',',
         ';' => ';',
         'TAB' => 'TAB',
-        '|' => '|',
-        '+' => '+',
       ),
       '#default_value' => $this->config['delimiter'],
     );
@@ -208,7 +202,7 @@ class FeedsCSVParser extends FeedsParser {
     $mappings = feeds_importer($this->id)->processor->config['mappings'];
     $sources = $uniques = array();
     foreach ($mappings as $mapping) {
-      if (!empty($mapping['unique'])) {
+      if ($mapping['unique']) {
         $uniques[] = check_plain($mapping['source']);
       }
       else {
