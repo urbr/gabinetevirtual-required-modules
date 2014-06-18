@@ -100,7 +100,7 @@ function directory_file_view($pid)
   }
 
   return theme(getThemeByUserAccess('files'), array(
-    'title' => strtoupper($info->title), 
+    'title' => $info->title, 
     'descricao' => $info->description,
     'mode' => 'paste', 
     'ids' => $id, 

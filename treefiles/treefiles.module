@@ -163,12 +163,12 @@ function treefiles_theme(){
           'template' => 'files_page',
           'variables' => array('title' => NULL, 'mode' => 'default', 'ids' => NULL, 'tipo' => NULL, 
             'nome' => NULL, 'tamanho' => NULL, 'atualizacao' => NULL, 'pid' => NULL, 'descricao' => NULL),
-          'path' => $path_theme
+          'path' => $path_module
        ),
        'files_info_user' => array(
           'template' => 'files_info_page',
           'variables' => array('file' => NULL, 'title' => NULL),
-          'path' => $path_theme
+          'path' => $path_module
        ),
 	);
 }
