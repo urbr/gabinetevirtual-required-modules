@@ -303,7 +303,7 @@ a.button:HOVER{
         </img>
       </td>
       <td class="list-table" headers="contents_75509_name">
-        <?php print l($nome[$i], ($tipo[$i] != "Pasta") ? file_create_url(file_load($ids[$i])->uri) : "tree/info/directory/$ids[$i]"); ?></a><br><br>
+        <?php print l($nome[$i], ($tipo[$i] != "Pasta") ? file_create_url(file_load($ids[$i])->uri) : $ids[$i]); ?></a><br><br>
       </td>
       <td class="list-table" headers="contents_75509_content_size_pretty">
         <?php print $tamanho[$i]; ?>

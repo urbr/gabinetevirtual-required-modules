@@ -24,8 +24,11 @@ function files_view()
   {
     $itens = db_query("SELECT COUNT(pid) FROM tb_directory_file WHERE pid = :pid", 
       array(':pid' => $res->id))->fetchField();
+    $alias = db_query("SELECT alias FROM url_alias WHERE source = :source", 
+        array(':source' => sprintf('tree/info/directory/%s', $res->id)))->fetchField();
 
-    $id[]   = $res->id; 
+    $id[]   = $alias;
+    #$id[]   = $res->id; 
     $tipo[] = "Pasta";
     $nome[] = $res->title;
     $tamanho[] = $itens . " items(s)";
@@ -86,8 +89,11 @@ function directory_file_view($pid)
     foreach($query as $res)
     {
       $itens = db_query("SELECT COUNT(pid) FROM tb_directory_file WHERE pid = :pid", array(':pid' => $res->id))->fetchField();
+      $alias = db_query("SELECT alias FROM url_alias WHERE source = :source", 
+        array(':source' => sprintf('tree/info/directory/%s', $res->id)))->fetchField();
 
-      $id[]   = $res->id;
+      $id[]   = $alias;
+      #$id[]   = $res->id;
       $tipo[] = "Pasta";
       $nome[] = $res->title;
       $tamanho[] = $itens . " items(s)";
